@@ -149,9 +149,10 @@ var allowedTransitions = map[State]map[State]bool{
 		Cancelled:      true,
 	},
 	NeedsAttention: {
-		ReadyToResume: true,
-		Failed:        true,
-		Cancelled:     true,
+		ReadyToResume:   true,
+		WaitingForReset: true,
+		Failed:          true,
+		Cancelled:       true,
 	},
 	Completed: {},
 	Failed:    {},

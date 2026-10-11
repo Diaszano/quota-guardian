@@ -51,6 +51,24 @@ type AttemptResult struct {
 	Transition  domain.Transition
 }
 
+type UncertainResolution string
+
+const (
+	ResolutionAbandon         UncertainResolution = "abandon"
+	ResolutionMarkFailed      UncertainResolution = "mark_failed"
+	ResolutionVerifiedSettled UncertainResolution = "verified_settled"
+)
+
+type ResolveUncertainRequest struct {
+	SessionID   string
+	AttemptID   string
+	Resolution  UncertainResolution
+	Evidence    domain.Evidence
+	Operator    string
+	Reason      string
+	Destination domain.State
+}
+
 type SessionStore interface {
 	Create(context.Context, NewSession) (domain.Session, error)
 	Get(context.Context, string) (domain.Session, error)
@@ -63,6 +81,9 @@ type SessionStore interface {
 	Renew(context.Context, domain.Attempt, time.Time) error
 	FinishAttempt(context.Context, AttemptResult) error
 	Reconcile(context.Context, string, time.Time) error
+	ResolveUncertain(context.Context, ResolveUncertainRequest) error
+	Backup(context.Context, string) error
+	Prune(context.Context, time.Time) error
 	Cancel(context.Context, string, int64) (domain.Session, error)
 	SetConsent(context.Context, string, int64, domain.Consent) (domain.Session, error)
 }

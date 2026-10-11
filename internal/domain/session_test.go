@@ -182,9 +182,10 @@ func TestTransitionTable(t *testing.T) {
 			domain.Cancelled:      true,
 		},
 		domain.NeedsAttention: {
-			domain.ReadyToResume: true,
-			domain.Failed:        true,
-			domain.Cancelled:     true,
+			domain.ReadyToResume:   true,
+			domain.WaitingForReset: true,
+			domain.Failed:          true,
+			domain.Cancelled:       true,
 		},
 		domain.Completed: {},
 		domain.Failed:    {},

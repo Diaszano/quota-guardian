@@ -16,8 +16,9 @@ import (
 var _ ports.SessionStore = (*Store)(nil)
 
 type Store struct {
-	db       *sql.DB
-	stateDir string
+	db             *sql.DB
+	stateDir       string
+	processChecker ProcessChecker
 }
 
 // DB returns the underlying *sql.DB for low-level or testing access.

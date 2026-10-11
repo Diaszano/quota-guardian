@@ -100,7 +100,7 @@ func (s *Store) ClaimStart(ctx context.Context, req ports.ClaimRequest) (domain.
 		newFence, leaseDeadlineMs, nowMs,
 	)
 	if err != nil {
-		return domain.Attempt{}, false, nil
+		return domain.Attempt{}, false, err
 	}
 
 	// Record session event
@@ -118,7 +118,7 @@ func (s *Store) ClaimStart(ctx context.Context, req ports.ClaimRequest) (domain.
 	}
 
 	if err := tx.Commit(); err != nil {
-		return domain.Attempt{}, false, nil
+		return domain.Attempt{}, false, err
 	}
 
 	att := domain.Attempt{
@@ -232,7 +232,7 @@ func (s *Store) ClaimDue(ctx context.Context, req ports.ClaimRequest) (domain.At
 		newFence, leaseDeadlineMs, nowMs,
 	)
 	if err != nil {
-		return domain.Attempt{}, false, nil
+		return domain.Attempt{}, false, err
 	}
 
 	// Record session event
@@ -250,7 +250,7 @@ func (s *Store) ClaimDue(ctx context.Context, req ports.ClaimRequest) (domain.At
 	}
 
 	if err := tx.Commit(); err != nil {
-		return domain.Attempt{}, false, nil
+		return domain.Attempt{}, false, err
 	}
 
 	att := domain.Attempt{
@@ -570,10 +570,4 @@ func (s *Store) FinishAttempt(ctx context.Context, result ports.AttemptResult) e
 	}
 
 	return tx.Commit()
-}
-
-// Reconcile is a lifecycle hook to reconcile crashed or interrupted attempts.
-// Detailed crash recovery is implemented in Task 5.
-func (s *Store) Reconcile(ctx context.Context, epoch string, now time.Time) error {
-	return nil
 }
