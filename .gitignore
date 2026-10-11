@@ -1,0 +1,12 @@
+# Worktrees and task tracking
+.worktrees/
+.superpowers/
+
+# Build and distribution artifacts
+dist/
+bin/
+
+# Local test artifacts and coverage
+*.test
+coverage.out
+*.prof
