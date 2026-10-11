@@ -175,3 +175,41 @@ func ValidateTransition(from, to State) error {
 	}
 	return nil
 }
+
+type AttemptKind string
+
+const (
+	AttemptKindStart  AttemptKind = "start"
+	AttemptKindResume AttemptKind = "resume"
+)
+
+type AttemptPhase string
+
+const (
+	AttemptPhaseClaimed   AttemptPhase = "claimed"
+	AttemptPhaseLaunching AttemptPhase = "launching"
+	AttemptPhaseActive    AttemptPhase = "active"
+	AttemptPhaseFinished  AttemptPhase = "finished"
+	AttemptPhaseUncertain AttemptPhase = "uncertain"
+)
+
+type ProcessIdentity struct {
+	PID        int
+	BootID     string
+	StartTicks uint64
+}
+
+type Attempt struct {
+	ID            string
+	SessionID     string
+	AttemptNumber int
+	Kind          AttemptKind
+	Phase         AttemptPhase
+	OwnerEpoch    string
+	Fence         int64
+	LeaseDeadline time.Time
+	Process       *ProcessIdentity
+	StartedAt     time.Time
+	FinishedAt    *time.Time
+	OutcomeCode   *string
+}
