@@ -9,8 +9,11 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/Diaszano/quota-guardian/internal/ports"
 	_ "modernc.org/sqlite"
 )
+
+var _ ports.SessionStore = (*Store)(nil)
 
 type Store struct {
 	db       *sql.DB
@@ -105,6 +108,7 @@ func Open(ctx context.Context, stateDir string) (*Store, error) {
 	values.Add("_pragma", "foreign_keys(ON)")
 	values.Add("_pragma", "journal_mode(WAL)")
 	values.Add("_pragma", "synchronous(FULL)")
+	values.Add("_txlock", "immediate")
 
 	dsn := fmt.Sprintf("file:%s?%s", dbPath, values.Encode())
 
