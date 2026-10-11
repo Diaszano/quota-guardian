@@ -2,7 +2,7 @@
 
 Date: 2026-10-11
 
-Status: proposed specification for user review; architectural direction approved.
+Status: approved for implementation planning, with user-requested refinements recorded below. Implementation remains unauthorized until plan approval.
 
 Scope: design only. No application, plugin, database migration, or service is implemented.
 
@@ -22,7 +22,7 @@ Release acceptance requires actual tests of the implemented core and compatibili
 | --- | --- | --- |
 | Native observation | User starts `agy` or `codex` normally after official plugin installation and trust setup | Hooks report supported lifecycle metadata. Guardian does not own the interactive session and cannot infer exclusive control. |
 | Managed supervision | `quota-guardian run --provider …` | Daemon owns the launched invocation and records its session ID. Eligible quota failures can enter durable waiting and subsequent recovery. |
-| Explicit adoption | `sessions resume <id>` on an observed session | Requires a verified ID, preserved execution policy, and proof of exclusive safe recovery. Initial release refuses adoption where that proof is unavailable. |
+| Explicit adoption | `sessions resume <id>` on an observed session | Unsupported in the first release. A future public provider contract must establish exclusive control and preserved execution policy. |
 | Background waiting | Managed invocation has exited after confirmed quota failure | Persisted schedule can survive terminal closure, daemon restart, and reboot. |
 | Interrupted execution | Daemon disappears during start, resume, or active work | Mark `NEEDS_ATTENTION`; do not automatically replay or infer completion. |
 
@@ -136,6 +136,8 @@ Provider methods block until their invocation is reaped; cancellation terminates
 
 `Outcome` distinguishes invocation exit from provider-confirmed turn completion. Exit zero alone is insufficient. A completed turn is not a claim that the user's broader coding objective is finished.
 
+Persist `turn_outcome` separately from lifecycle state; use `unknown`, `completed`, `quota`, `permission_blocked`, or `failed`. `COMPLETED` means the supervised turn settled with provider-confirmed completion and no detected blocker. CLI copy must say "Turn completed; objective completion not assessed." No objective-success flag or metric is inferred. A permission denial overrides a nominal successful response for lifecycle disposition, while retaining the observed turn result as evidence.
+
 `Transition` includes expected revision, expected state, event ID, consent revision where relevant, and typed changes. Claim and finish operations include attempt number and fencing token. Repository implementations must enforce these semantics transactionally; generic unrestricted row updates are excluded.
 
 ## 6. Lifecycle and invariants
@@ -147,6 +149,7 @@ stateDiagram-v2
   DISCOVERED --> NEEDS_ATTENTION: cannot establish recovery context
   RUNNING --> QUOTA_EXHAUSTED: verified terminal quota failure
   RESUMING --> RUNNING: resumed invocation established
+  RESUMING --> QUOTA_EXHAUSTED: verified same session and settled quota failure
   RUNNING --> COMPLETED: terminal success and invocation settled
   RUNNING --> FAILED: definitive nonrecoverable failure
   RUNNING --> NEEDS_ATTENTION: uncertainty or approval required
@@ -171,6 +174,7 @@ The diagram shows principal paths; the normative transition rules follow:
 - `WAITING_FOR_RESET` records a due time even when consent is disabled. Consent-disabled sessions stay waiting with an explicit blocker; time passing does not grant consent.
 - `READY_TO_RESUME` means time, budget, consent, provider support, context, and ownership gates pass. A changed gate returns it to waiting or attention before any spawn.
 - `RESUMING` is persisted before invoking the provider. Confirmation of the same session ID permits `RUNNING`; a different ID cancels the invocation and requires attention.
+- A resumed invocation can fail with quota before it confirms active running. Permit `RESUMING -> QUOTA_EXHAUSTED -> WAITING_FOR_RESET` only after this invocation confirms the expected saved session ID and its execution is settled. A saved ID or requested ID alone is insufficient. If either proof is absent, preserve an uncertain attempt and enter `NEEDS_ATTENTION`. Finish the attempt, record quota evidence, and schedule in one transaction. Keep the already-incremented retry count; apply new reset/backoff, deadline, consent, and budget rules. Do not replay the original prompt or grant an extra retry.
 - `COMPLETED`, `FAILED`, and `CANCELLED` close a managed task. They cannot be resurrected by delayed hooks. Later manual activity on a known closed ID is recorded as an observation without reopening the task in this release.
 - `NEEDS_ATTENTION` never retries automatically. Explicit resume still checks cooldown, ownership, permissions, and identity. It cannot override an unresolved active invocation.
 - Cancellation from any nonterminal state first sets a durable `cancel_requested` intent and disables consent. Without an active invocation it becomes `CANCELLED` immediately. With one, cancellation completes only after termination is confirmed; unknown external activity yields attention.
@@ -187,7 +191,7 @@ Timestamps are integer UTC epoch milliseconds. Durations are integer millisecond
 | Table | Columns and constraints |
 | --- | --- |
 | `schema_migrations` | `version` PK, checksum, applied time; refuse unknown newer schema |
-| `sessions` | `id` PK; nullable submission_key UNIQUE; provider; nullable provider_session_id; provider_context_id; mode CHECK(managed, observed); state CHECK(lifecycle enum); revision; fence_counter; cwd; context_json; context_digest; provider_version; last_observed_at; retry_count >= 0; retry_policy_json; next_retry_at; deadline_at; max_retries; cancel_requested; last_error_category/code; recovery_result; created_at; updated_at |
+| `sessions` | `id` PK; nullable submission_key UNIQUE; provider; nullable provider_session_id; provider_context_id; mode CHECK(managed, observed); state CHECK(lifecycle enum); turn_outcome CHECK(unknown,completed,quota,permission_blocked,failed); revision; fence_counter; cwd; context_json; context_digest; provider_version; last_observed_at; retry_count >= 0; retry_policy_json; next_retry_at; deadline_at; max_retries; cancel_requested; last_error_category/code; recovery_result; created_at; updated_at |
 | `consents` | session_id PK/FK; enabled; revision; approved_context_digest; approved_at; revoked_at; origin CHECK(user_cli); background_allowed; no hook origin |
 | `attempts` | id PK; session_id FK; attempt_number; kind CHECK(start,resume); phase CHECK(claimed,launching,active,finished,uncertain); owner_epoch; fence; lease_until; boot_id; pid; process_start_ticks; started_at; finished_at; outcome_code; UNIQUE(session_id,attempt_number) |
 | `session_events` | id PK; session_id FK; dedupe_key UNIQUE; source; kind; from_state; to_state; error_code; attempt_id nullable; observed_at; received_at; no raw payload |
@@ -249,7 +253,9 @@ Cancellation and launch share a per-session critical section. The scheduler rech
 
 Use `exec.CommandContext` with argument slices, a resolved executable, and explicit working directory; never interpolate user strings into a shell. Provider adapters validate session ID syntax per version and prevent option injection. Record nonsecret workspace identity and approved policy settings. Missing/moved workspaces, changed policy/executable contract, unsupported versions, or changed execution context block unattended recovery.
 
-The original prompt travels through private IPC and lives in memory only for the initial launch. Prefer provider stdin where supported. Antigravity's actual accepted prompt transport must be validated; if its print interface requires an argument, document the process-argument exposure instead of claiming stdin privacy. Do not persist a queued initial prompt. If the daemon crashes before obtaining a reliable session ID, require attention; user submission is not silently repeated.
+The original prompt travels through private IPC and lives in memory only for the initial launch. Evaluate Antigravity's documented `--input-format stream-json --output-format stream-json`: JSON-encode one user message on stdin, close stdin, then drain both outputs and await the terminal result and process exit. Do not combine stream input with `-p`, which the documentation says is ignored. Installed `agy 1.3.3` help advertises stream input; EOF behavior, explicit-ID resume composition, and policy preservation remain runtime gates. Use this interface only after installed-version verification; if unavailable, fail closed rather than silently fall back to prompt arguments. Codex also uses verified stdin prompt transport. Do not persist a queued initial prompt. If the daemon crashes before obtaining a reliable session ID, require attention; user submission is not silently repeated.
+
+Antigravity documents that a tool requiring unavailable headless approval can be soft-denied while the run continues and exits zero. The adapter must consume stderr as well as structured output, classify verified permission-denial signals, and retain a blocker through the end of the attempt. A successful result or subsequent successful tool does not clear it. If the version's denial visibility cannot be verified, do not certify unattended recovery. Do not grant permissions automatically to make the run succeed. See the official [headless documentation](https://www.antigravity.google/docs/cli/headless/).
 
 Background process environment is deliberately smaller than the invoking shell. Use configured absolute provider paths and an allowlist of nonsecret execution settings. Providers obtain their own authentication through supported mechanisms; Guardian never reads credential files. Environment-only credentials must already be supplied by the user's service environment and cannot be copied into Guardian state or IPC requests. A setup requiring an unavailable secret environment fails visibly.
 
@@ -264,6 +270,8 @@ Each plugin invokes a small observer subcommand of the same installed binary. It
 Proposed bounds: 1 MiB hook input, 200 ms total delivery budget, no network calls, no disk queue, no retries on the provider's critical path. Daemon-down observations can be lost; this is explicit best-effort monitoring. A diagnostic observer command can report connectivity failures without injecting messages into agent context. Managed execution has a separate reliable event path and does not depend on hooks.
 
 Antigravity discovery uses supported invocation metadata and Stop observations; `fullyIdle` does not prove that a user cannot start another turn. Codex discovery uses SessionStart. Lifecycle hooks may update last observation but cannot manufacture quota evidence. Codex's transcript path is not a stable parsing contract. Asynchronous delivery may reorder events; hooks never overwrite authoritative managed state or reopen terminal tasks. Natural dedupe IDs are preferred; otherwise generate delivery IDs and apply observations idempotently without inferring turn order from timestamps alone.
+
+Verified native observation is a first-release deliverable independent of autonomous recovery support. Manual-session takeover is explicitly unsupported in the first release. A future capability requires a documented public provider interface for exclusive attachment/ownership, idle and in-flight operation status, context/policy preservation, and safe relinquishment; verify it on named versions before enabling adoption. Hook presence, elapsed silence, a dead PID, or a readable transcript never substitutes for that contract.
 
 Install through official plugin mechanisms. Local help confirms Antigravity `plugin install/uninstall/validate` and Codex `plugin add/remove`; exact package/marketplace commands must be tested before publishing copy-paste instructions. Codex hooks require the user's trust review. No global-hook replacement, shell alias interception, or automatic edits to provider credential/configuration files. If a future supported installation needs configuration merging, it requires explicit authorization, a private backup, conflict detection, and ownership-aware removal.
 
@@ -323,6 +331,8 @@ Export is disabled by default and explicitly configured through standard OTel me
 | Quoted 429 in tool/model text | No quota transition |
 | Auth failure or invalid session ID | Definitive failure; no quota retry |
 | Permission prompt unsupported in headless mode | Attention; preserve policy |
+| Antigravity soft-denial followed by result success and exit zero | Persist permission blocker; no recovery-success or objective-success claim |
+| Repeated quota while RESUMING | Reschedule only with same-ID evidence and settled execution; otherwise attention |
 | Waiting daemon crashes/reboots | Restore schedule and consent; no duplicate claim |
 | Crash around spawn or after tool execution | Uncertain attempt blocks recovery |
 | Provider emits different resumed ID | Cancel owned process; attention |

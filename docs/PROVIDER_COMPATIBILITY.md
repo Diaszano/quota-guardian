@@ -6,6 +6,8 @@ Investigated on 2026-10-11. This is a research baseline, not a tested integratio
 | --- | --- | --- |
 | Installed version | `agy 1.3.3` | `codex-cli 0.162.1` |
 | Headless execution | `--print` / `-p` in installed help | `exec` in installed help |
+| Prompt stdin transport | Installed help and official docs describe `--input-format stream-json` paired with stream output; runtime/EOF/resume composition untested | Installed exec help describes stdin input; runtime behavior untested |
+| Permission denial versus exit status | Official docs describe headless soft-denial with exit zero; exact denial signal needs version-specific testing | Permission-preserving headless behavior needs version-specific testing |
 | Structured output | `--output-format stream-json` in help; documented `init`, `step_update`, `result` events | `--json` in exec resume help; documented JSONL events including `thread.started`, `turn.completed`, `turn.failed` |
 | Session identity | Documented `conversation_id` in headless events | Documented `thread_id` in `thread.started` |
 | Resume a selected session | `--conversation` in help and official headless documentation | `codex exec resume [SESSION_ID] [PROMPT]` in installed help |

@@ -23,6 +23,6 @@ All ten Superpowers skill directories requested for the development methodology 
 
 ## Next action
 
-The user confirmed the empty repository is intentional and approved a Linux-first, single-daemon architecture using SQLite. The detailed specification is in [the Superpowers design document](superpowers/specs/2026-10-11-quota-guardian-design.md). Written-spec review must precede implementation planning; plan approval must precede implementation.
+The user confirmed the empty repository is intentional and approved a Linux-first, single-daemon architecture using SQLite. The [design specification](superpowers/specs/2026-10-11-quota-guardian-design.md) was approved for planning, with explicit refinements to completion evidence, Antigravity streaming/permission behavior, repeated quota recovery, and compatibility gates. The [implementation plan](superpowers/plans/2026-10-11-quota-guardian.md) is proposed for review; plan approval must precede implementation. There is still no application module or test suite.
 
 No model prompts, quota-consuming integration tests, plugin installations, configuration migrations, application changes, or commits were performed during assessment.
