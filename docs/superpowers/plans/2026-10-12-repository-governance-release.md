@@ -70,7 +70,7 @@
 ### Task 3: Reviewable automated releases
 
 **Files:**
-- Modify: `.github/workflows/release.yml`, `CHANGELOG.md`
+- Modify: `.github/workflows/release.yml`, `CHANGELOG.md`, `CONTRIBUTING.md`
 - Create: `release-please-config.json`, `.release-please-manifest.json`, `.goreleaser.yaml`
 
 **Interfaces:**
@@ -79,11 +79,11 @@
 
 - [ ] Configure Release Please for the Go module and current `0.x` candidate maturity; reconcile the unpublished `0.1.0-rc.1` changelog record without treating it as a tag.
 - [ ] Configure manifest baseline `0.1.0`, prerelease versioning with `rc`, and prerelease GitHub Releases; verify the first proposed tag is `v0.1.0-rc.1` for the Go release type before enabling the workflow.
-- [ ] Configure a release workflow that runs Release Please on `main`, then runs GoReleaser in the same execution only when Release Please reports a created release.
+- [ ] Configure Release Please to create a draft prerelease and force-create its version tag; run GoReleaser in the same workflow execution only when Release Please reports a created release, reuse that draft, upload the artifacts, then publish it.
 - [ ] Configure GoReleaser for Linux amd64/arm64 and Darwin amd64/arm64 archives, embedding the tag in the version and clearly marking Darwin runtime support as unverified.
 - [ ] Generate a checksum file and release notes that preserve current support and runtime evidence limitations.
 - [ ] Use the `RELEASE_PLEASE_TOKEN` fine-grained repository secret for Release Please with only contents, issues, and pull-request write access so CI triggers on generated PRs; use `GITHUB_TOKEN` with `contents: write` for GoReleaser publishing. Keep third-party actions SHA-pinned.
-- [ ] Document `RELEASE_PLEASE_TOKEN`, its minimum permissions, and the GitHub setting that allows Actions to create pull requests in `CONTRIBUTING.md`; do not enable release PR automation until the secret and setting are configured.
+- [ ] Document `RELEASE_PLEASE_TOKEN`, its minimum permissions, and the GitHub setting that allows Actions to create pull requests in `CONTRIBUTING.md`; do not enable release PR automation until the secret and setting are configured. Task 1 owns the general contributor guide; this task adds only release-specific secret setup.
 - [ ] Validate GoReleaser configuration in snapshot/check mode and inspect the generated artifacts/metadata without publishing a public release.
 
 ### Task 4: GitHub contribution and maintenance files
@@ -111,8 +111,9 @@
 - Produces: Active `main` ruleset and standardized GitHub repository presentation/settings.
 
 - [ ] Set repository description and relevant topics; enable delete-branch-on-merge and set squash as preferred while retaining the already available merge options unless GitHub settings demand a narrower change.
+- [ ] Push the implementation branch and open a PR to `main` while the current ruleset is absent; wait until the PR reports the stable `verify` check.
 - [ ] Enable GitHub Actions to create pull requests and create an active ruleset for `main` requiring a PR and successful `verify`, with zero required approvals, no bypass actors, and blocks for force pushes and branch deletion.
 - [ ] Confirm the default branch remains `main`, verify settings with `gh`/GitHub API, and confirm the ruleset is active.
 - [ ] Run `git diff --check`, `go vet ./...`, `go test ./...`, `go test -race ./...`, and `go test ./tests -run TestArchitecture` before committing implementation changes.
 - [ ] Inspect the complete Git diff and verify no pending plugin installation documentation changes were lost or unexpectedly rewritten.
-- [ ] Push implementation to a feature branch and open a PR to `main`; merge only after CI passes under the configured ruleset.
+- [ ] Merge the PR only after the ruleset is active and CI is green.
