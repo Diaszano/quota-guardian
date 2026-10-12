@@ -31,4 +31,4 @@ Current runtime evidence is limited to version checks. No model turn, permission
 
 ## Release artifacts
 
-`make build VERSION=...` creates an ignored native binary in `dist/`. The release workflow cross-builds Linux binaries and macOS binaries labelled runtime-unsupported, then creates a `SHA256SUMS` file for each artifact bundle. It uploads workflow artifacts only and does not publish a public release.
+`make build VERSION=...` creates an ignored native binary in `dist/`. Merging a Release Please candidate PR creates a tag and draft prerelease. In the same workflow run, GoReleaser cross-builds Linux amd64/arm64 and Darwin amd64/arm64 archives labelled runtime-unsupported, generates `SHA256SUMS`, uploads the archives to that draft, and publishes the prerelease. For local validation without publishing or creating a tag, run `goreleaser check` and `goreleaser release --snapshot --clean`; inspect the archives, checksums, and `dist/artifacts.json`. These build checks provide no provider or systemd runtime evidence.
