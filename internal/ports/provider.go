@@ -41,6 +41,7 @@ type StartRequest struct {
 	Attempt   domain.Attempt
 	Context   domain.ExecutionContext
 	Prompt    string // Ephemeral prompt passed into stdin / invocation
+	OnStart   func(domain.ProcessIdentity) error
 }
 
 // ResumeRequest contains parameters to resume an existing managed turn.
@@ -49,6 +50,7 @@ type ResumeRequest struct {
 	ProviderSessionID string
 	Attempt           domain.Attempt
 	Context           domain.ExecutionContext
+	OnStart           func(domain.ProcessIdentity) error
 }
 
 // Provider defines the interface for interacting with underlying AI agent CLI tools.

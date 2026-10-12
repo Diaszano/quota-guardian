@@ -160,6 +160,9 @@ func Decide(state State, evidence Evidence) (Disposition, error) {
 		hasMatchingNonEmptyIDs := evidence.ExpectedSessionID != "" &&
 			evidence.ConfirmedSessionID != "" &&
 			evidence.ExpectedSessionID == evidence.ConfirmedSessionID
+		if hasMatchingNonEmptyIDs && evidence.Settled && evidence.TurnCompleted {
+			return Disposition{State: Completed, TurnOutcome: TurnOutcomeCompleted}, nil
+		}
 
 		if hasMatchingNonEmptyIDs && !evidence.Settled && evidence.Failure.Category == "" {
 			return Disposition{

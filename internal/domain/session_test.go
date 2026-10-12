@@ -177,6 +177,7 @@ func TestTransitionTable(t *testing.T) {
 		domain.Resuming: {
 			domain.Running:        true,
 			domain.QuotaExhausted: true,
+			domain.Completed:      true,
 			domain.NeedsAttention: true,
 			domain.Failed:         true,
 			domain.Cancelled:      true,

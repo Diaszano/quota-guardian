@@ -444,9 +444,11 @@ func (s *Store) FinishAttempt(ctx context.Context, result ports.AttemptResult) e
 	if sess.Fence != result.Fence {
 		return ports.ErrConflict
 	}
-
 	// If a session transition is specified
 	destState := result.Transition.Destination
+	if sess.CancelRequested && destState != domain.Cancelled {
+		return ports.ErrConflict
+	}
 	if destState != "" {
 		if result.Transition.ExpectedRevision > 0 && sess.Revision != result.Transition.ExpectedRevision {
 			return ports.ErrConflict
@@ -487,19 +489,25 @@ func (s *Store) FinishAttempt(ctx context.Context, result ports.AttemptResult) e
 	if destState != "" {
 		turnOutcome := string(sess.TurnOutcome)
 		var nextRetryAtMs *int64
-		if sess.NextRetryAt != nil {
+		if result.NextRetryAt != nil {
+			ms := result.NextRetryAt.UnixMilli()
+			nextRetryAtMs = &ms
+		} else if sess.NextRetryAt != nil {
 			ms := sess.NextRetryAt.UnixMilli()
 			nextRetryAtMs = &ms
-		}
-		if result.Transition.Evidence.Failure.ResetAt != nil {
+		} else if result.Transition.Evidence.Failure.ResetAt != nil {
 			ms := result.Transition.Evidence.Failure.ResetAt.UnixMilli()
 			nextRetryAtMs = &ms
 		}
+		var providerSessionID sql.NullString
+		if result.ProviderSessionID != "" {
+			providerSessionID = sql.NullString{String: result.ProviderSessionID, Valid: true}
+		}
 
-		if result.Transition.Evidence.TurnCompleted {
-			turnOutcome = string(domain.TurnOutcomeCompleted)
-		} else if result.Transition.Evidence.PermissionBlocked {
+		if result.Transition.Evidence.PermissionBlocked {
 			turnOutcome = string(domain.TurnOutcomePermissionBlocked)
+		} else if result.Transition.Evidence.TurnCompleted {
+			turnOutcome = string(domain.TurnOutcomeCompleted)
 		} else if result.Transition.Evidence.Failure.Category == domain.Quota {
 			turnOutcome = string(domain.TurnOutcomeQuota)
 		} else if result.Transition.Evidence.Failure.Category != "" {
@@ -523,6 +531,7 @@ func (s *Store) FinishAttempt(ctx context.Context, result ports.AttemptResult) e
 				state = ?,
 				revision = revision + 1,
 				turn_outcome = ?,
+				provider_session_id = COALESCE(?, provider_session_id),
 				next_retry_at = ?,
 				last_error_category = COALESCE(?, last_error_category),
 				last_error_code = COALESCE(?, last_error_code),
@@ -530,7 +539,7 @@ func (s *Store) FinishAttempt(ctx context.Context, result ports.AttemptResult) e
 				updated_at = ?
 			WHERE id = ? AND revision = ?
 		`,
-			string(destState), turnOutcome, nextRetryAtMs,
+			string(destState), turnOutcome, providerSessionID, nextRetryAtMs,
 			lastErrCat, lastErrCode, lastErrResetMs, finishedAtMs,
 			sess.ID, sess.Revision,
 		)
