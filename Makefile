@@ -1,6 +1,14 @@
 VERSION ?= dev
 
-.PHONY: test race vet architecture fmt build
+.PHONY: check test race vet architecture fmt build
+
+check:
+	test -z "$(shell gofmt -l cmd internal tests)"
+	go vet ./...
+	go test ./...
+	go test -race ./...
+	go test ./tests -run TestArchitecture
+	pre-commit run --all-files
 
 test:
 	go test ./...

@@ -22,7 +22,7 @@ func newID() string {
 }
 
 const sessionSelectQuery = `
-SELECT 
+SELECT
     s.id, s.submission_key, s.provider, s.provider_session_id, s.context_id,
     s.mode, s.state, s.revision, s.fence,
     s.consent_revision, s.consent_enabled, s.consent_background_allowed,
