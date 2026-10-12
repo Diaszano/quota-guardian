@@ -16,6 +16,7 @@ type Provider struct {
 	Executable  string `json:"executable"`
 	Version     string `json:"version,omitempty"`
 	SettingsRef string `json:"settings_ref,omitempty"`
+	Workspace   string `json:"workspace"`
 }
 type Config struct {
 	StateDir   string              `json:"state_dir,omitempty"`
@@ -85,6 +86,13 @@ func (c Config) Validate() error {
 		}
 		if p.SettingsRef != "" && !filepath.IsAbs(p.SettingsRef) {
 			return fmt.Errorf("provider %q settings_ref must be absolute", name)
+		}
+		if !filepath.IsAbs(p.Workspace) {
+			return fmt.Errorf("provider %q workspace must be absolute", name)
+		}
+		workspace, err := os.Lstat(p.Workspace)
+		if err != nil || !workspace.IsDir() || workspace.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("provider %q workspace unavailable or unsafe", name)
 		}
 		if p.SettingsRef != "" {
 			info, err := os.Lstat(p.SettingsRef)

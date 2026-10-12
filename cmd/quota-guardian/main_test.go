@@ -18,6 +18,7 @@ import (
 	"github.com/Diaszano/quota-guardian/internal/application"
 	"github.com/Diaszano/quota-guardian/internal/domain"
 	"github.com/Diaszano/quota-guardian/internal/infrastructure"
+	"github.com/Diaszano/quota-guardian/internal/infrastructure/configuration"
 	"github.com/Diaszano/quota-guardian/internal/ports"
 )
 
@@ -135,7 +136,8 @@ func TestCLIEndToEndWithFakeProvider(t *testing.T) {
 	go func() { _ = server.Serve(listener) }()
 	defer server.Close()
 	configPath := filepath.Join(t.TempDir(), "config.json")
-	config, _ := json.Marshal(map[string]any{"runtime_dir": runtime, "state_dir": state, "providers": map[string]any{"fake": map[string]string{"executable": "/bin/fake"}}})
+	workspace := t.TempDir()
+	config, _ := json.Marshal(map[string]any{"runtime_dir": runtime, "state_dir": state, "providers": map[string]any{"fake": map[string]string{"executable": "/bin/fake", "workspace": workspace}}})
 	if err := os.WriteFile(configPath, config, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -152,5 +154,15 @@ func TestCLIEndToEndWithFakeProvider(t *testing.T) {
 	case <-provider.done:
 	case <-time.After(time.Second):
 		t.Fatal("fake provider did not execute")
+	}
+}
+
+func TestCompositionKeepsProviderCapabilitiesClosed(t *testing.T) {
+	providers := configuredProviders(configuration.Config{Providers: map[string]configuration.Provider{"agy": {Executable: "/bin/agy", Workspace: t.TempDir()}, "codex": {Executable: "/bin/codex", Workspace: t.TempDir()}}})
+	for name, provider := range providers {
+		caps := provider.Capabilities()
+		if caps.CanStart || caps.CanResume || caps.CanAutonomous || caps.SupportsDenial {
+			t.Fatalf("%s capability unexpectedly enabled: %+v", name, caps)
+		}
 	}
 }

@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"fixture-thread"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"type":"agent_message","text":"fixture"}}
+{"type":"turn.completed","usage":{"output_tokens":1}}

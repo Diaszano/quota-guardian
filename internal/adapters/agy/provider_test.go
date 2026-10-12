@@ -113,6 +113,13 @@ func TestUnknownVersionCapabilitiesClosed(t *testing.T) {
 	}
 }
 
+func TestAutonomyRemainsClosedWithoutQuotaEvidence(t *testing.T) {
+	p := New(&runnerStub{}, domain.ExecutionContext{}, ports.Capabilities{CanStart: true, CanResume: true, CanAutonomous: true, SupportsDenial: true, SupportsSettlement: true})
+	if p.Capabilities().CanAutonomous {
+		t.Fatal("unverified quota recovery enabled")
+	}
+}
+
 func TestClassificationRequiresSettledMatchingIdentity(t *testing.T) {
 	stdout := []byte(`{"event":"init","conversation_id":"expected"}` + "\n" + `{"event":"result","result":{"conversation_id":"expected","status":"SUCCESS"}}` + "\n")
 	events, err := Parse(stdout, nil)

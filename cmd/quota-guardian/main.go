@@ -15,8 +15,11 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Diaszano/quota-guardian/internal/adapters/agy"
+	"github.com/Diaszano/quota-guardian/internal/adapters/codex"
 	"github.com/Diaszano/quota-guardian/internal/adapters/ipc"
 	"github.com/Diaszano/quota-guardian/internal/adapters/persistence"
+	"github.com/Diaszano/quota-guardian/internal/adapters/process"
 	"github.com/Diaszano/quota-guardian/internal/application"
 	"github.com/Diaszano/quota-guardian/internal/domain"
 	"github.com/Diaszano/quota-guardian/internal/infrastructure"
@@ -39,15 +42,15 @@ type cliClient interface {
 }
 
 type sessionView struct {
-	ID            string             `json:"id"`
-	Provider      string             `json:"provider"`
-	Mode          domain.SessionMode `json:"mode"`
-	State         domain.State       `json:"state"`
-	TurnOutcome   domain.TurnOutcome `json:"turn_outcome"`
-	CapabilityEvidence string `json:"capability_evidence"`
-	RetryCount    int                `json:"retry_count"`
-	NextRetryAt   *time.Time         `json:"next_retry_at,omitempty"`
-	LastErrorCode string             `json:"last_error_code,omitempty"`
+	ID                 string             `json:"id"`
+	Provider           string             `json:"provider"`
+	Mode               domain.SessionMode `json:"mode"`
+	State              domain.State       `json:"state"`
+	TurnOutcome        domain.TurnOutcome `json:"turn_outcome"`
+	CapabilityEvidence string             `json:"capability_evidence"`
+	RetryCount         int                `json:"retry_count"`
+	NextRetryAt        *time.Time         `json:"next_retry_at,omitempty"`
+	LastErrorCode      string             `json:"last_error_code,omitempty"`
 }
 
 func viewSession(s domain.Session) sessionView {
@@ -397,7 +400,7 @@ func daemonRun(ctx context.Context, cfg configuration.Config, stdout, stderr io.
 		fmt.Fprintln(stderr, "IPC unavailable:", err)
 		return 1
 	}
-	service := application.NewCoordinator(store, map[string]ports.Provider{}, clock)
+	service := application.NewCoordinator(store, configuredProviders(cfg), clock)
 	scheduler := application.NewScheduler(store, service, clock, randomJitter{}, 4)
 	go func() {
 		if err := scheduler.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
@@ -417,6 +420,24 @@ func daemonRun(ctx context.Context, cfg configuration.Config, stdout, stderr io.
 	defer cancel()
 	_ = server.Shutdown(shutdown)
 	return 0
+}
+
+func configuredProviders(cfg configuration.Config) map[string]ports.Provider {
+	providers := make(map[string]ports.Provider)
+	runner := process.NewRunner()
+	for name, provider := range cfg.Providers {
+		execution := configuration.BuildExecutionContext(provider.Executable, provider.Version, provider.Workspace)
+		execution.Profile = provider.SettingsRef
+		execution.Digest = domain.DigestContext(execution)
+		capabilities := ports.Capabilities{Version: provider.Version}
+		switch name {
+		case "agy":
+			providers[name] = agy.New(runner, execution, capabilities)
+		case "codex":
+			providers[name] = codex.New(runner, execution, capabilities)
+		}
+	}
+	return providers
 }
 
 type randomJitter struct{}

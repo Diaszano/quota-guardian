@@ -9,10 +9,12 @@ Quota Guardian reads an optional JSON file from `~/.config/quota-guardian/config
   "providers": {
     "agy": {
       "executable": "/home/alice/.local/bin/agy",
+      "workspace": "/home/alice/project",
       "version": ""
     },
     "codex": {
       "executable": "/home/alice/.local/bin/codex",
+      "workspace": "/home/alice/project",
       "version": ""
     }
   }

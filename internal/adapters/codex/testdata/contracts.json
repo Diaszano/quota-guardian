@@ -1,0 +1,8 @@
+{
+  "provider": "Codex CLI",
+  "provenance": "synthetic fixture derived from official non-interactive CLI documentation",
+  "runtime_verified": false,
+  "permission_evidence": "unavailable",
+  "quota_classification": "unavailable",
+  "autonomous_recovery": false
+}

@@ -22,6 +22,8 @@ type Provider struct {
 }
 
 func New(runner ports.ProcessRunner, execution domain.ExecutionContext, evidence ports.Capabilities) *Provider {
+	// No documented, version-stable quota/reset event is available to support autonomous recovery.
+	evidence.CanAutonomous = false
 	return &Provider{runner: runner, context: execution, capabilities: evidence}
 }
 func (*Provider) Name() string                       { return "agy" }
