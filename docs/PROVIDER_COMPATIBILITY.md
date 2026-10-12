@@ -54,3 +54,9 @@ The current official Codex non-interactive guide documents `codex exec --json` J
 Sources: [Antigravity headless mode](https://www.antigravity.google/docs/cli/headless/), [Codex non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode), [Codex command reference](https://learn.chatgpt.com/docs/developer-commands?surface=cli).
 
 The [design specification](superpowers/specs/2026-10-11-quota-guardian-design.md) separates local-help verification, documented contracts, simulation coverage, and runtime verification. The adapters now have synthetic fixtures and fake-runner tests; no live provider turn or quota exhaustion has been triggered. Safe autonomous resume remains gated on policy preservation, identity, and settled invocation evidence. Normal-launch discovery does not authorize takeover of a manually running session.
+
+## Runtime verification record (2026-10-12)
+
+This record is limited to local binary-version checks on Linux: Antigravity CLI `1.3.3` and Codex CLI `0.162.1`. `agy plugin validate plugins/agy` accepted the Antigravity package (`hooks: 1 processed`); no Codex marketplace validator was run. The untagged closed-gate test passed and the standard synthetic/fake-runner suites passed. No `provider_runtime` test was run because `QG_RUNTIME_AUTHORIZED=1` and an approved isolated workspace were not provided. No model turn, permission denial, quota exhaustion, plugin install/remove, or live session settlement was exercised.
+
+Therefore only documented hook-format observation is packaged, with its real delivery still unverified. Provider start/resume, denial classification, quota detection, autonomous recovery, and real settlement remain disabled. Do not describe these version checks or simulated fixtures as runtime capability evidence.

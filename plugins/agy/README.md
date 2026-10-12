@@ -11,4 +11,4 @@ agy plugin list
 
 Remove it with `agy plugin uninstall quota-guardian-observer`. The provider CLI owns its plugin registry and removal; Quota Guardian does not rewrite that configuration or other entries. The paths shown above remain correctly quoted when the checkout path contains spaces.
 
-The manifest and hook event shapes follow the [Antigravity plugin documentation](https://antigravity.google/docs/plugins) and [hook documentation](https://antigravity.google/docs/hooks). Package validation and installation were not run against a real Antigravity CLI here; verify the installed version before relying on it.
+The manifest and hook event shapes follow the [Antigravity plugin documentation](https://antigravity.google/docs/plugins) and [hook documentation](https://antigravity.google/docs/hooks). `agy plugin validate plugins/agy` passed with installed CLI 1.3.3. Installation and live hook delivery were not run; verify the installed version and review the plugin before enabling it.
