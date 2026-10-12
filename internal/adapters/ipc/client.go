@@ -63,6 +63,7 @@ type RunRequest struct {
 	Provider      string `json:"provider"`
 	ContextID     string `json:"context_id"`
 	Prompt        string `json:"prompt"`
+	AutoResume    bool   `json:"auto_resume,omitempty"`
 }
 
 func (c *Client) Run(ctx context.Context, req RunRequest) (domain.Session, error) {

@@ -49,6 +49,13 @@ func (c *Coordinator) Submit(ctx context.Context, input ports.NewSession, prompt
 		return domain.Session{}, ports.ErrUnsupported
 	}
 	input.Context = contextProvider.ExecutionContext()
+	if input.Consent.Enabled {
+		input.Consent.ApprovedContextDigest = input.Context.Digest
+		if input.Consent.ApprovedAt == nil {
+			now := c.clock.Now()
+			input.Consent.ApprovedAt = &now
+		}
+	}
 	session, err := c.store.Create(ctx, input)
 	if err != nil {
 		return domain.Session{}, err
@@ -140,6 +147,7 @@ func (c *Coordinator) Start(ctx context.Context, req ports.StartRequest) error {
 		}
 		return ports.ErrConflict
 	}
+	output := c.output(session.ID)
 	if req.OnClaim != nil {
 		req.OnClaim()
 	}
@@ -162,7 +170,6 @@ func (c *Coordinator) Start(ctx context.Context, req ports.StartRequest) error {
 	}
 	req.Attempt, req.Context = attempt, session.Context
 	req.OnStart = func(identity domain.ProcessIdentity) error { return c.store.RecordIdentity(runCtx, attempt, identity) }
-	output := c.output(session.ID)
 	outcome, err := provider.Start(runCtx, req, func(record ports.StreamRecord) error { output.Publish(record); return nil })
 	if runCtx.Err() != nil {
 		return c.finishInterrupted(ctx, attempt, runCtx)
@@ -220,6 +227,7 @@ func (c *Coordinator) Resume(ctx context.Context, sessionID string, oneShot bool
 		}
 		return ports.ErrConflict
 	}
+	output := c.output(session.ID)
 	runCtx, cancel := context.WithCancelCause(ctx)
 	c.active[session.ID] = cancel
 	c.mu.Unlock()
@@ -242,7 +250,6 @@ func (c *Coordinator) Resume(ctx context.Context, sessionID string, oneShot bool
 		Attempt: attempt, Context: session.Context,
 		OnStart: func(identity domain.ProcessIdentity) error { return c.store.RecordIdentity(runCtx, attempt, identity) },
 	}
-	output := c.output(session.ID)
 	outcome, err := provider.Resume(runCtx, req, func(record ports.StreamRecord) error { output.Publish(record); return nil })
 	if runCtx.Err() != nil {
 		return c.finishInterrupted(ctx, attempt, runCtx)

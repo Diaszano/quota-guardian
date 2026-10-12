@@ -132,6 +132,7 @@ func (h *Handler) run(w http.ResponseWriter, r *http.Request) {
 		Provider      string `json:"provider"`
 		ContextID     string `json:"context_id"`
 		Prompt        string `json:"prompt"`
+		AutoResume    bool   `json:"auto_resume,omitempty"`
 	}
 	if err := decode(w, r, &in); err != nil {
 		writeError(w, err)
@@ -146,7 +147,7 @@ func (h *Handler) run(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	policy := domain.RetryPolicy{SafetyMargin: 30 * time.Second, BaseDelay: time.Minute, CapDelay: time.Hour, JitterFraction: .1, MaxRetries: 5, Deadline: 7 * 24 * time.Hour}
-	consent := domain.Consent{Enabled: true, ApprovedAt: ptrTime(time.Now().UTC())}
+	consent := domain.Consent{Enabled: true, BackgroundAllowed: in.AutoResume, ApprovedAt: ptrTime(time.Now().UTC())}
 	key := in.SubmissionKey
 	item, err := h.service.Submit(r.Context(), ports.NewSession{SubmissionKey: &key, Provider: in.Provider, ContextID: in.ContextID, Mode: domain.ModeManaged, RetryPolicy: policy, Consent: consent}, in.Prompt)
 	if err != nil {
