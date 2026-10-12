@@ -1,0 +1,17 @@
+# Managed by quota-guardian; do not edit.
+[Unit]
+Description=Quota Guardian
+After=default.target
+
+[Service]
+Type=notify
+ExecStart=@EXECUTABLE@ daemon run
+Restart=on-failure
+RestartSec=5s
+WatchdogSec=30s
+TimeoutStopSec=30s
+KillMode=control-group
+UMask=0077
+
+[Install]
+WantedBy=default.target

@@ -2,6 +2,8 @@ package application
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Diaszano/quota-guardian/internal/domain"
@@ -11,11 +13,15 @@ import (
 const maxSchedulerWorkers = 4
 
 type Scheduler struct {
-	store       ports.SessionStore
-	coordinator *Coordinator
-	clock       ports.Clock
-	jitter      ports.Jitter
-	limit       int
+	store        ports.SessionStore
+	coordinator  *Coordinator
+	clock        ports.Clock
+	jitter       ports.Jitter
+	limit        int
+	lastProgress atomic.Int64
+	ready        chan struct{}
+	readyOnce    sync.Once
+	readyErr     error
 }
 
 func NewScheduler(store ports.SessionStore, coordinator *Coordinator, clock ports.Clock, jitter ports.Jitter, limit int) *Scheduler {
@@ -23,8 +29,19 @@ func NewScheduler(store ports.SessionStore, coordinator *Coordinator, clock port
 		limit = maxSchedulerWorkers
 	}
 	coordinator.setJitter(jitter)
-	return &Scheduler{store: store, coordinator: coordinator, clock: clock, jitter: jitter, limit: limit}
+	return &Scheduler{store: store, coordinator: coordinator, clock: clock, jitter: jitter, limit: limit, ready: make(chan struct{})}
 }
+
+func (s *Scheduler) Ready() <-chan struct{} { return s.ready }
+func (s *Scheduler) ReadyError() error      { return s.readyErr }
+func (s *Scheduler) LastProgress() time.Time {
+	n := s.lastProgress.Load()
+	if n == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, n)
+}
+func (s *Scheduler) markReady(err error) { s.readyOnce.Do(func() { s.readyErr = err; close(s.ready) }) }
 
 func (s *Scheduler) Run(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
@@ -39,11 +56,13 @@ func (s *Scheduler) Run(ctx context.Context) error {
 			}
 			return runCtx.Err()
 		}
+		s.lastProgress.Store(time.Now().UnixNano())
 		available := s.limit - len(workers)
 		if available > 0 {
 			mode := domain.ModeManaged
 			candidates, err := s.store.List(runCtx, ports.SessionFilter{Mode: &mode, DueOnly: true, Now: s.clock.Now(), Limit: available})
 			if err != nil {
+				s.markReady(err)
 				cancel()
 				for len(workers) > 0 {
 					<-workers
@@ -53,6 +72,8 @@ func (s *Scheduler) Run(ctx context.Context) error {
 				}
 				return err
 			}
+			s.lastProgress.Store(time.Now().UnixNano())
+			s.markReady(nil)
 			for _, candidate := range candidates {
 				if runCtx.Err() != nil {
 					break

@@ -35,7 +35,11 @@ func (c *Coordinator) Observe(ctx context.Context, event ports.Event) (domain.Se
 		if err := c.store.RecordObserved(ctx, session.ID, now); err != nil {
 			return domain.Session{}, err
 		}
-		return c.store.Get(ctx, session.ID)
+		observed, err := c.store.Get(ctx, session.ID)
+		if err == nil && c.telemetry != nil {
+			c.telemetry.Record(ctx, ports.TelemetrySessionObserved, session.Provider)
+		}
+		return observed, err
 	}
 	return session, nil
 }

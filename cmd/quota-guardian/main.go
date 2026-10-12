@@ -25,6 +25,8 @@ import (
 	"github.com/Diaszano/quota-guardian/internal/domain"
 	"github.com/Diaszano/quota-guardian/internal/infrastructure"
 	"github.com/Diaszano/quota-guardian/internal/infrastructure/configuration"
+	"github.com/Diaszano/quota-guardian/internal/infrastructure/observability"
+	"github.com/Diaszano/quota-guardian/internal/infrastructure/systemd"
 	"github.com/Diaszano/quota-guardian/internal/ports"
 )
 
@@ -146,11 +148,47 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		return 0
 	case "daemon":
-		if len(args) > 1 && args[1] == "run" {
-			return daemonRun(ctx, cfg, stdout, stderr)
+		if len(args) != 2 {
+			fmt.Fprintln(stderr, "usage: daemon <run|install|uninstall|start|stop|status>")
+			return 2
 		}
-		fmt.Fprintln(stderr, "only foreground 'daemon run' is available")
-		return 2
+		switch args[1] {
+		case "run":
+			return daemonRun(ctx, cfg, stdout, stderr)
+		case "install":
+			executable, e := os.Executable()
+			if e != nil {
+				fmt.Fprintln(stderr, "unable to locate executable")
+				return 1
+			}
+			if e = systemd.Install(ctx, userUnitDir(), executable); e != nil {
+				fmt.Fprintln(stderr, "service install failed:", e)
+				return 1
+			}
+			fmt.Fprintln(stdout, "User service installed. Enable it with systemctl --user enable --now quota-guardian.service.")
+			return 0
+		case "uninstall":
+			if e := systemd.Uninstall(ctx, userUnitDir()); e != nil {
+				fmt.Fprintln(stderr, "service uninstall failed:", e)
+				return 1
+			}
+			fmt.Fprintln(stdout, "User service unit removed.")
+			return 0
+		case "start", "stop", "status":
+			if e := systemd.Control(ctx, args[1]); e != nil {
+				fmt.Fprintln(stderr, "systemd user service command failed:", e)
+				return 1
+			}
+			if args[1] == "status" {
+				fmt.Fprintln(stdout, "User service is active.")
+			} else {
+				fmt.Fprintf(stdout, "User service %s requested.\n", args[1])
+			}
+			return 0
+		default:
+			fmt.Fprintln(stderr, "unknown daemon command:", args[1])
+			return 2
+		}
 	default:
 		fmt.Fprintln(stderr, "unknown command:", args[0])
 		return 2
@@ -164,8 +202,17 @@ func observeCommand(ctx context.Context, args []string, stdin io.Reader, stdout 
 	if fs.Parse(args) != nil || fs.NArg() != 0 || *provider == "" {
 		return 2
 	}
-	cfg, err := configuration.Defaults()
+	configPath := os.Getenv("QUOTA_GUARDIAN_CONFIG")
+	if configPath == "" {
+		home, _ := os.UserHomeDir()
+		configPath = filepath.Join(home, ".config", "quota-guardian", "config.json")
+	}
+	cfg, err := loadConfig(configPath)
 	if err != nil {
+		_ = hooks.Handle(ctx, *provider, stdin, stdout, nil)
+		return 0
+	}
+	if err = cfg.Validate(); err != nil {
 		_ = hooks.Handle(ctx, *provider, stdin, stdout, nil)
 		return 0
 	}
@@ -407,6 +454,11 @@ func daemonRun(ctx context.Context, cfg configuration.Config, stdout, stderr io.
 		return 1
 	}
 	defer store.Close()
+	telemetry, flush, telemetryErr := observability.New(ctx, cfg)
+	if telemetryErr != nil {
+		fmt.Fprintln(stderr, "telemetry disabled: exporter initialization failed")
+		flush = func(context.Context) error { return nil }
+	}
 	clock := infrastructure.NewClock()
 	epoch, err := newKey()
 	if err != nil {
@@ -416,31 +468,138 @@ func daemonRun(ctx context.Context, cfg configuration.Config, stdout, stderr io.
 		fmt.Fprintln(stderr, "recovery failed:", err)
 		return 1
 	}
+	service := application.NewCoordinator(store, configuredProviders(cfg), clock)
+	service.SetTelemetry(telemetry)
+	scheduler := application.NewScheduler(store, service, clock, randomJitter{}, 4)
+	runCtx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
+	schedulerDone := make(chan struct{})
+	var schedulerErr error
+	go func() {
+		schedulerErr = scheduler.Run(runCtx)
+		close(schedulerDone)
+	}()
+	select {
+	case <-scheduler.Ready():
+		if scheduler.ReadyError() != nil {
+			fmt.Fprintln(stderr, "scheduler readiness failed")
+			_ = stopOwnedWork(service, cancelRun, schedulerDone, flush)
+			return 1
+		}
+	case <-schedulerDone:
+		fmt.Fprintln(stderr, "scheduler stopped before readiness")
+		_ = stopOwnedWork(service, cancelRun, schedulerDone, flush)
+		return 1
+	case <-ctx.Done():
+		_ = stopOwnedWork(service, cancelRun, schedulerDone, flush)
+		return 0
+	}
 	listener, err := ipc.Listen(ctx, cfg.RuntimeDir, nil)
 	if err != nil {
+		_ = stopOwnedWork(service, cancelRun, schedulerDone, flush)
 		fmt.Fprintln(stderr, "IPC unavailable:", err)
 		return 1
 	}
-	service := application.NewCoordinator(store, configuredProviders(cfg), clock)
-	scheduler := application.NewScheduler(store, service, clock, randomJitter{}, 4)
-	go func() {
-		if err := scheduler.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			fmt.Fprintln(stderr, "scheduler stopped")
-		}
-	}()
 	handler := ipc.NewHandler(service, store)
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
+	serveStarted := make(chan struct{})
+	serverDone := make(chan error, 1)
 	go func() {
-		if serveErr := server.Serve(listener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		close(serveStarted)
+		serverDone <- server.Serve(listener)
+	}()
+	<-serveStarted
+	_ = systemd.Notify("READY=1\nSTATUS=Quota Guardian ready")
+	fmt.Fprintln(stdout, "Daemon ready.")
+	if systemd.WatchdogEnabled() {
+		go watchdog(runCtx, scheduler, store)
+	}
+	var runErr error
+	select {
+	case <-ctx.Done():
+	case <-schedulerDone:
+		runErr = schedulerErr
+		if runErr == nil {
+			runErr = errors.New("scheduler stopped unexpectedly")
+		}
+		if runErr != nil && !errors.Is(runErr, context.Canceled) {
+			fmt.Fprintln(stderr, "scheduler stopped unexpectedly")
+		}
+		cancelRun()
+	case err := <-serverDone:
+		if !errors.Is(err, http.ErrServerClosed) {
+			runErr = err
 			fmt.Fprintln(stderr, "daemon server failed")
 		}
-	}()
-	fmt.Fprintln(stdout, "Daemon ready.")
-	<-ctx.Done()
-	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	_ = server.Shutdown(shutdown)
+		cancelRun()
+	}
+	_ = systemd.Notify("STOPPING=1")
+	serverShutdown, cancelServerShutdown := context.WithTimeout(context.Background(), 8*time.Second)
+	if err := server.Shutdown(serverShutdown); err != nil {
+		_ = server.Close()
+	}
+	cancelServerShutdown()
+	shutdownErr := stopOwnedWork(service, cancelRun, schedulerDone, flush)
+	if runErr != nil && !errors.Is(runErr, context.Canceled) {
+		return 1
+	}
+	if shutdownErr != nil {
+		return 1
+	}
 	return 0
+}
+
+func stopOwnedWork(service *application.Coordinator, cancel context.CancelFunc, schedulerDone <-chan struct{}, flush func(context.Context) error) error {
+	shutdown, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownErr := service.Shutdown(shutdown)
+	cancelShutdown()
+	cancel()
+	schedulerCtx, cancelScheduler := context.WithTimeout(context.Background(), 8*time.Second)
+	select {
+	case <-schedulerDone:
+	case <-schedulerCtx.Done():
+		shutdownErr = errors.Join(shutdownErr, schedulerCtx.Err())
+	}
+	cancelScheduler()
+	flushCtx, cancelFlush := context.WithTimeout(context.Background(), 2*time.Second)
+	if flush != nil {
+		_ = flush(flushCtx)
+	}
+	cancelFlush()
+	return shutdownErr
+}
+
+func watchdog(ctx context.Context, scheduler *application.Scheduler, store ports.SessionStore) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			progress := scheduler.LastProgress()
+			checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			_, checkErr := store.List(checkCtx, ports.SessionFilter{Limit: 1})
+			cancel()
+			if watchdogHealthy(progress, time.Now(), checkErr) {
+				_ = systemd.Notify("WATCHDOG=1")
+			}
+		}
+	}
+}
+
+func watchdogHealthy(progress, now time.Time, storageErr error) bool {
+	age := now.Sub(progress)
+	return storageErr == nil && !progress.IsZero() && age >= 0 && age < 30*time.Second
+}
+
+func userUnitDir() string {
+	base := os.Getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		home, _ := os.UserHomeDir()
+		base = filepath.Join(home, ".config")
+	}
+	return filepath.Join(base, "systemd", "user")
 }
 
 func configuredProviders(cfg configuration.Config) map[string]ports.Provider {

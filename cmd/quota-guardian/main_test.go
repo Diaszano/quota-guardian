@@ -166,3 +166,19 @@ func TestCompositionKeepsProviderCapabilitiesClosed(t *testing.T) {
 		}
 	}
 }
+
+func TestWatchdogRequiresFreshSchedulerAndStorageChecks(t *testing.T) {
+	now := time.Now()
+	if !watchdogHealthy(now.Add(-time.Second), now, nil) {
+		t.Fatal("healthy progress was rejected")
+	}
+	if watchdogHealthy(now.Add(-31*time.Second), now, nil) {
+		t.Fatal("stale scheduler progress accepted")
+	}
+	if watchdogHealthy(now, now, context.DeadlineExceeded) {
+		t.Fatal("storage failure accepted")
+	}
+	if watchdogHealthy(time.Time{}, now, nil) {
+		t.Fatal("missing scheduler progress accepted")
+	}
+}

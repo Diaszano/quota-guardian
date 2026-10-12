@@ -16,8 +16,9 @@ import (
 const attemptLease = 30 * time.Second
 
 var (
-	errLeaseRenewal = errors.New("attempt lease renewal failed")
-	errUserCancel   = errors.New("session cancellation requested")
+	errLeaseRenewal   = errors.New("attempt lease renewal failed")
+	errUserCancel     = errors.New("session cancellation requested")
+	errDaemonShutdown = errors.New("daemon shutdown")
 )
 
 type Coordinator struct {
@@ -32,6 +33,8 @@ type Coordinator struct {
 	outputMu    sync.Mutex
 	outputs     map[string]*OutputBuffer
 	outputOrder []string
+	telemetry   ports.Telemetry
+	stopping    bool
 }
 
 // Submit creates an idempotent managed session and starts only its first accepted submission.
@@ -97,6 +100,32 @@ func NewCoordinator(store ports.SessionStore, providers map[string]ports.Provide
 	return &Coordinator{store: store, providers: providers, clock: clock, ownerEpoch: hex.EncodeToString(epoch[:]), active: make(map[string]context.CancelCauseFunc), outputs: make(map[string]*OutputBuffer)}
 }
 
+func (c *Coordinator) SetTelemetry(t ports.Telemetry) { c.telemetry = t }
+
+func (c *Coordinator) Shutdown(ctx context.Context) error {
+	c.mu.Lock()
+	c.stopping = true
+	for _, cancel := range c.active {
+		cancel(errDaemonShutdown)
+	}
+	c.mu.Unlock()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		c.mu.Lock()
+		active := len(c.active)
+		c.mu.Unlock()
+		if active == 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
 func (c *Coordinator) Output(sessionID string) *OutputBuffer {
 	c.outputMu.Lock()
 	defer c.outputMu.Unlock()
@@ -120,6 +149,10 @@ func (c *Coordinator) output(sessionID string) *OutputBuffer {
 
 func (c *Coordinator) Start(ctx context.Context, req ports.StartRequest) error {
 	c.mu.Lock()
+	if c.stopping {
+		c.mu.Unlock()
+		return ports.ErrBusy
+	}
 	session, err := c.store.Get(ctx, req.SessionID)
 	if err != nil {
 		c.mu.Unlock()
@@ -183,6 +216,10 @@ func (c *Coordinator) Start(ctx context.Context, req ports.StartRequest) error {
 
 func (c *Coordinator) Resume(ctx context.Context, sessionID string, oneShot bool) error {
 	c.mu.Lock()
+	if c.stopping {
+		c.mu.Unlock()
+		return ports.ErrBusy
+	}
 	session, err := c.store.Get(ctx, sessionID)
 	if err != nil {
 		c.mu.Unlock()
@@ -357,6 +394,12 @@ func (c *Coordinator) settle(ctx context.Context, session domain.Session, attemp
 		}
 		return err
 	}
+	if c.telemetry != nil {
+		c.telemetry.Record(ctx, ports.TelemetryTurnSettled, session.Provider)
+		if nextRetryAt != nil {
+			c.telemetry.Record(ctx, ports.TelemetryRetryScheduled, session.Provider)
+		}
+	}
 	if disposition.State == domain.QuotaExhausted {
 		waitingEvidence := evidence
 		waitingEvidence.ExpectedSessionID = ""
@@ -389,6 +432,10 @@ func (c *Coordinator) finishCancelled(attempt domain.Attempt) error {
 }
 
 func (c *Coordinator) finishInterrupted(ctx context.Context, attempt domain.Attempt, runCtx context.Context) error {
+	if errors.Is(context.Cause(runCtx), errDaemonShutdown) {
+		_ = c.store.MarkUncertain(context.WithoutCancel(ctx), attempt, domain.Evidence{ObservedAt: c.clock.Now()})
+		return ports.ErrUncertain
+	}
 	if errors.Is(context.Cause(runCtx), errLeaseRenewal) {
 		evidence := domain.Evidence{ObservedAt: c.clock.Now()}
 		_ = c.store.MarkUncertain(context.WithoutCancel(ctx), attempt, evidence)
