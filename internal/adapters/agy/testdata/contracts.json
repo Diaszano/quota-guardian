@@ -1,0 +1,7 @@
+{
+  "provider": "Antigravity CLI",
+  "provenance": "synthetic fixture derived from official headless stream-json documentation",
+  "runtime_verified": false,
+  "quota_classification": "unavailable",
+  "permission_policy": "any stderr alongside SUCCESS is conservatively blocked"
+}

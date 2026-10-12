@@ -1,0 +1,3 @@
+{"event":"init","conversation_id":"fixture-conversation"}
+{"event":"step_update","step_update":{"conversation_id":"fixture-conversation","step_index":0,"state":"DONE","step_type":"agent_response","text_delta":"fixture"}}
+{"event":"result","result":{"conversation_id":"fixture-conversation","status":"SUCCESS","response":"fixture"}}
