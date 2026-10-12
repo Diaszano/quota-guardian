@@ -83,7 +83,7 @@
 - [ ] Configure GoReleaser for Linux amd64/arm64 and Darwin amd64/arm64 archives, embedding the tag in the version and clearly marking Darwin runtime support as unverified.
 - [ ] Generate a checksum file and release notes that preserve current support and runtime evidence limitations.
 - [ ] Use the `RELEASE_PLEASE_TOKEN` fine-grained repository secret for Release Please with only contents, issues, and pull-request write access so CI triggers on generated PRs; use `GITHUB_TOKEN` with `contents: write` for GoReleaser publishing. Keep third-party actions SHA-pinned.
-- [ ] Document `RELEASE_PLEASE_TOKEN` and its minimum permissions in `CONTRIBUTING.md`; do not enable release PR automation until the secret and setting are configured. Task 1 owns the general contributor guide; this task adds only release-specific secret setup.
+- [ ] Document `RELEASE_PLEASE_TOKEN` and its minimum permissions in `CONTRIBUTING.md`; do not enable release PR automation until the secret is configured. Task 1 owns the general contributor guide; this task adds only release-specific secret setup.
 - [ ] Validate GoReleaser configuration in snapshot/check mode and inspect the generated artifacts/metadata without publishing a public release.
 
 ### Task 4: GitHub contribution and maintenance files
