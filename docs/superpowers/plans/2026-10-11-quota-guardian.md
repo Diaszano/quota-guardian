@@ -124,11 +124,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** Produce ledger Session/Evidence/Transition/Disposition types; `domain.Decide(state State, evidence Evidence) (Disposition, error)` and `domain.ValidateTransition(from, to State) error`. Enumerate lifecycle values from the spec and turn outcomes separately.
 
-- [ ] **RED:** Add `TestCompletionRequiresEvidence`, `TestPermissionBlockerWins`, `TestQuotaBeforeRunning`, and table coverage of every allowed/disallowed transition. Assertions: `Decide(Running, Evidence{Settled:true}).State != Completed`; completed-turn + settled + no blocker => Completed; same evidence + PermissionBlocked => NeedsAttention; Resuming + matching nonempty IDs + settled quota => QuotaExhausted; missing/mismatched ID or unsettled quota => NeedsAttention. Assert no field reports objective success. Architecture test rejects provider/SQL/OS adapter imports in core.
-- [ ] **Observe RED:** `go test ./internal/domain ./tests -run 'Test(Completion|Permission|Quota|Transition|Architecture)' -v`; expected missing API or failing behavioral assertion. Create only the module/test harness needed to run RED. Module path: `github.com/Diaszano/quota-guardian`; select the oldest currently supported Go release compatible with chosen dependencies and record the tested version, without assuming the local 1.27 toolchain is a floor.
-- [ ] **GREEN:** Implement lifecycle and evidence rules, including cancelled/terminal immutability and separate `turn_outcome`; document development checks in AGENTS while preserving the user's RTK reference.
-- [ ] **REFACTOR/verify:** Repeat focused command, run common checks; assert architecture test inspects production imports, not fixture imports.
-- [ ] **Commit:** `feat: define session lifecycle and completion evidence`.
+- [x] **RED:** Add `TestCompletionRequiresEvidence`, `TestPermissionBlockerWins`, `TestQuotaBeforeRunning`, and table coverage of every allowed/disallowed transition. Assertions: `Decide(Running, Evidence{Settled:true}).State != Completed`; completed-turn + settled + no blocker => Completed; same evidence + PermissionBlocked => NeedsAttention; Resuming + matching nonempty IDs + settled quota => QuotaExhausted; missing/mismatched ID or unsettled quota => NeedsAttention. Assert no field reports objective success. Architecture test rejects provider/SQL/OS adapter imports in core.
+- [x] **Observe RED:** `go test ./internal/domain ./tests -run 'Test(Completion|Permission|Quota|Transition|Architecture)' -v`; expected missing API or failing behavioral assertion. Create only the module/test harness needed to run RED. Module path: `github.com/Diaszano/quota-guardian`; select the oldest currently supported Go release compatible with chosen dependencies and record the tested version, without assuming the local 1.27 toolchain is a floor.
+- [x] **GREEN:** Implement lifecycle and evidence rules, including cancelled/terminal immutability and separate `turn_outcome`; document development checks in AGENTS while preserving the user's RTK reference.
+- [x] **REFACTOR/verify:** Repeat focused command, run common checks; assert architecture test inspects production imports, not fixture imports.
+- [x] **Commit:** `feat: define session lifecycle and completion evidence`.
 
 ### Task 2: Define retry policy, consent, and quota scope isolation
 
@@ -138,11 +138,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** `domain.NextRetry(now time.Time, failure Failure, priorResumes int, policy RetryPolicy, jitter float64, deadline time.Time) RetryDecision`; `domain.CanResume(s Session, now time.Time, capsVerified bool, oneShot bool) error`. Define Scope and ExecutionContext from ledger.
 
-- [ ] **RED:** `TestRetryPolicy` asserts no-reset first delay = 90s at jitter 0 (60s base + 30s margin), second = 150s, capped fallback = 3630s, explicit reset 8h away remains reset+30s. Assert fifth exhausted resume budget blocks a sixth; reset after seven-day deadline blocks. Add overflow/NaN/jitter bounds/ambiguous timestamp cases, clock rollback, and `TestUnknownScopesStayIndependent` (different sessions with nil scope never affect each other).
-- [ ] **Observe RED:** `go test ./internal/domain -run 'Test(Retry|UnknownScopes|Consent)' -v`; expected missing retry/consent rules.
-- [ ] **GREEN:** Implement checked timing, fixed reason codes, consent revision/context binding, cancellation precedence; one-shot authorization permits one due attempt but never enables autonomous consent. Only confirmed quota enters fallback; auth/network failures do not.
-- [ ] **REFACTOR/verify:** Repeat focused tests and common checks. Add `TestConsentCannotBeGrantedByObservation` and `TestContextChangeInvalidatesConsent` to the same run.
-- [ ] **Commit:** `feat: enforce bounded retry and recovery consent`.
+- [x] **RED:** `TestRetryPolicy` asserts no-reset first delay = 90s at jitter 0 (60s base + 30s margin), second = 150s, capped fallback = 3630s, explicit reset 8h away remains reset+30s. Assert fifth exhausted resume budget blocks a sixth; reset after seven-day deadline blocks. Add overflow/NaN/jitter bounds/ambiguous timestamp cases, clock rollback, and `TestUnknownScopesStayIndependent` (different sessions with nil scope never affect each other).
+- [x] **Observe RED:** `go test ./internal/domain -run 'Test(Retry|UnknownScopes|Consent)' -v`; expected missing retry/consent rules.
+- [x] **GREEN:** Implement checked timing, fixed reason codes, consent revision/context binding, cancellation precedence; one-shot authorization permits one due attempt but never enables autonomous consent. Only confirmed quota enters fallback; auth/network failures do not.
+- [x] **REFACTOR/verify:** Repeat focused tests and common checks. Add `TestConsentCannotBeGrantedByObservation` and `TestContextChangeInvalidatesConsent` to the same run.
+- [x] **Commit:** `feat: enforce bounded retry and recovery consent`.
 
 ### Task 3: Create private SQLite storage and migrations
 
@@ -152,11 +152,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** `persistence.Open(ctx context.Context, stateDir string) (*Store, error)`, `(*Store).Close() error`; `ports.SessionStore` exposes design Create/Apply/ClaimDue/FinishAttempt/List plus `Get(ctx,id)`, `ClaimStart(ctx,req)`, `MarkLaunching(ctx,attempt)`, `RecordIdentity(ctx,attempt,identity)`, `Renew(ctx,attempt,until)`, `Reconcile(ctx,epoch,now)`, `Cancel(ctx,id,revision)`, `SetConsent(ctx,id,revision,consent)`. All return errors and typed values, never accept SQL or arbitrary maps.
 
-- [ ] **RED:** `TestOpenPrivateState`, `TestMigrationsFailClosed`: temporary state has mode 0700, database/WAL files 0600, foreign keys on, journal WAL, synchronous FULL; corrupt/newer/checksum-mismatched schema and symlink/foreign-owned directories are rejected. Validate schema includes `turn_outcome`, submission key, revision/fence, all design tables, CHECK/FK/index constraints.
-- [ ] **Observe RED:** `go test ./internal/adapters/persistence -run 'Test(Open|Migrations)' -v`; expected missing Open/schema.
-- [ ] **GREEN:** Evaluate maintained SQLite drivers against supported Go/Linux targets, WAL/FULL, cancellation, backup, CGO/cross-build burden, security/support status; record official evidence and exact pinned version in DEPENDENCIES. Prefer a maintained pure-Go driver if all gates pass; a failed evaluation is reported before changing the design. Use `database/sql`, bounded 2-second busy timeout, one writer connection, transactional embedded migrations, no implicit destructive repair.
-- [ ] **REFACTOR/verify:** Repeat focused tests and common checks; query actual PRAGMAs on the opened connection, not configured string constants.
-- [ ] **Commit:** `feat: add private transactional sqlite state`.
+- [x] **RED:** `TestOpenPrivateState`, `TestMigrationsFailClosed`: temporary state has mode 0700, database/WAL files 0600, foreign keys on, journal WAL, synchronous FULL; corrupt/newer/checksum-mismatched schema and symlink/foreign-owned directories are rejected. Validate schema includes `turn_outcome`, submission key, revision/fence, all design tables, CHECK/FK/index constraints.
+- [x] **Observe RED:** `go test ./internal/adapters/persistence -run 'Test(Open|Migrations)' -v`; expected missing Open/schema.
+- [x] **GREEN:** Evaluate maintained SQLite drivers against supported Go/Linux targets, WAL/FULL, cancellation, backup, CGO/cross-build burden, security/support status; record official evidence and exact pinned version in DEPENDENCIES. Prefer a maintained pure-Go driver if all gates pass; a failed evaluation is reported before changing the design. Use `database/sql`, bounded 2-second busy timeout, one writer connection, transactional embedded migrations, no implicit destructive repair.
+- [x] **REFACTOR/verify:** Repeat focused tests and common checks; query actual PRAGMAs on the opened connection, not configured string constants.
+- [x] **Commit:** `feat: add private transactional sqlite state`.
 
 ### Task 4: Implement atomic attempts and idempotent submissions
 
@@ -166,11 +166,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** Implement Create/Apply/Get/List/ClaimStart/ClaimDue/MarkLaunching/RecordIdentity/Renew/FinishAttempt/Cancel/SetConsent. `Create` returns the existing session for an existing submission key; it never overwrites its context. All attempt mutations condition on token and expected state; claim returns `(Attempt, bool, error)`.
 
-- [ ] **RED:** `TestConcurrentClaims` runs 32 claimers and asserts exactly one claim/open attempt/count increment. `TestStaleFenceRejected` asserts an old finish/renew changes no row. `TestSubmissionRetryReturnsExisting` asserts one task and no replaced context even with a different repeated payload. Add transaction rollback and cancel/consent-vs-claim race tests.
-- [ ] **Observe RED:** `go test -race ./internal/adapters/persistence -run 'Test(Concurrent|Stale|Submission|Rollback|Cancel)' -v`.
-- [ ] **GREEN:** Use BEGIN IMMEDIATE, conditional writes, unique indexes, event+state+attempt transaction boundaries, monotonic fencing, nullable identity. Persist retry count at resume claim, not start. Store no prompt or prompt hash; idempotency keys are single-use and bound to the first accepted submission.
-- [ ] **REFACTOR/verify:** Repeat focused command/common checks; assert database dump contains none of seeded prompt/token sentinels.
-- [ ] **Commit:** `feat: serialize recovery attempts and submissions`.
+- [x] **RED:** `TestConcurrentClaims` runs 32 claimers and asserts exactly one claim/open attempt/count increment. `TestStaleFenceRejected` asserts an old finish/renew changes no row. `TestSubmissionRetryReturnsExisting` asserts one task and no replaced context even with a different repeated payload. Add transaction rollback and cancel/consent-vs-claim race tests.
+- [x] **Observe RED:** `go test -race ./internal/adapters/persistence -run 'Test(Concurrent|Stale|Submission|Rollback|Cancel)' -v`.
+- [x] **GREEN:** Use BEGIN IMMEDIATE, conditional writes, unique indexes, event+state+attempt transaction boundaries, monotonic fencing, nullable identity. Persist retry count at resume claim, not start. Store no prompt or prompt hash; idempotency keys are single-use and bound to the first accepted submission.
+- [x] **REFACTOR/verify:** Repeat focused command/common checks; assert database dump contains none of seeded prompt/token sentinels.
+- [x] **Commit:** `feat: serialize recovery attempts and submissions`.
 
 ### Task 5: Reconcile crashes and maintain durable state
 
@@ -180,11 +180,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** Implement `Reconcile(ctx, epoch string, now time.Time) error`; add `(*Store).Backup(ctx context.Context, destination string) error`, `(*Store).Prune(ctx context.Context, before time.Time) error`.
 
-- [ ] **RED:** `TestRestartPreservesWaiting` asserts reset/count/consent unchanged after reopen. `TestRestartUnfinishedAttemptsUncertain` covers claimed/launching/active, including nil PID and exit-before-commit; all become uncertain/attention with no new claim. `TestExpiredLeaseDoesNotReleaseAttempt` asserts expiry alone still blocks. Backup restores committed WAL data; retention never deletes active/uncertain state.
-- [ ] **Observe RED:** `go test ./internal/adapters/persistence -run 'Test(Restart|Expired|Backup|Retention)' -v`.
-- [ ] **GREEN:** Reconcile in transactions before readiness; use driver-supported online backup; prune terminal events older than 30 days without deleting session/idempotency identity. Never raw-copy a live database or close uncertain attempts automatically.
-- [ ] **REFACTOR/verify:** Repeat focused/common checks; run core milestone race suite `go test -race ./...`.
-- [ ] **Commit:** `feat: reconcile interrupted attempts without replay`.
+- [x] **RED:** `TestRestartPreservesWaiting` asserts reset/count/consent unchanged after reopen. `TestRestartUnfinishedAttemptsUncertain` covers claimed/launching/active, including nil PID and exit-before-commit; all become uncertain/attention with no new claim. `TestExpiredLeaseDoesNotReleaseAttempt` asserts expiry alone still blocks. Backup restores committed WAL data; retention never deletes active/uncertain state.
+- [x] **Observe RED:** `go test ./internal/adapters/persistence -run 'Test(Restart|Expired|Backup|Retention)' -v`.
+- [x] **GREEN:** Reconcile in transactions before readiness; use driver-supported online backup; prune terminal events older than 30 days without deleting session/idempotency identity. Never raw-copy a live database or close uncertain attempts automatically.
+- [x] **REFACTOR/verify:** Repeat focused/common checks; run core milestone race suite `go test -race ./...`.
+- [x] **Commit:** `feat: reconcile interrupted attempts without replay`.
 
 ### Task 6: Implement the Linux process runner
 
@@ -194,11 +194,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** Provider/Clock contracts from ledger; `ports.ProcessRunner.Run(ctx context.Context, spec CommandSpec, onStart func(domain.ProcessIdentity) error, onRecord func(StreamRecord) error) (ProcessResult,error)`. CommandSpec contains resolved executable, argv, cwd, approved environment and stdin reader; ProcessResult contains exit code, reaped flag, settlement confidence. StreamRecord identifies stdout/stderr. Non-Linux adapter returns ErrUnsupported.
 
-- [ ] **RED:** `TestDrainBothStreams` floods stderr while returning a stdout result and asserts no deadlock; `TestCancellationReapsGroup`, `TestStalePIDNeverSignalled`, `TestCallbackFailureCancels`, `TestArgumentsRemainLiteral`, and `TestOversizeRecord` assert bounded termination and no shell interpolation. Fake CLI modes: success, quota-reset, quota-unknown, interrupted, invalid-id, no-resume, repeated-quota, auth, soft-denial, blocked-child, flood-output, wrong-id.
-- [ ] **Observe RED:** `go test ./internal/adapters/process -run 'Test(Drain|Cancellation|Stale|Callback|Arguments|Oversize)' -v`.
-- [ ] **GREEN:** Spawn a process group, call onStart before accepting execution as managed, drain pipes concurrently with 1 MiB record limit and bounded queues, close stdin deterministically, cancel then kill/reap under context deadlines. Prefer held pidfd for direct process signaling where available; never act on a stale persisted PID. Descendant/remote execution uncertainty must remain explicit in ProcessResult.
-- [ ] **REFACTOR/verify:** Repeat focused/common checks and `go test -race ./internal/adapters/process`; no unconditional wall-clock sleeps in coordination tests.
-- [ ] **Commit:** `feat: supervise bounded cancellable linux processes`.
+- [x] **RED:** `TestDrainBothStreams` floods stderr while returning a stdout result and asserts no deadlock; `TestCancellationReapsGroup`, `TestStalePIDNeverSignalled`, `TestCallbackFailureCancels`, `TestArgumentsRemainLiteral`, and `TestOversizeRecord` assert bounded termination and no shell interpolation. Fake CLI modes: success, quota-reset, quota-unknown, interrupted, invalid-id, no-resume, repeated-quota, auth, soft-denial, blocked-child, flood-output, wrong-id.
+- [x] **Observe RED:** `go test ./internal/adapters/process -run 'Test(Drain|Cancellation|Stale|Callback|Arguments|Oversize)' -v`.
+- [x] **GREEN:** Spawn a process group, call onStart before accepting execution as managed, drain pipes concurrently with 1 MiB record limit and bounded queues, close stdin deterministically, cancel then kill/reap under context deadlines. Prefer held pidfd for direct process signaling where available; never act on a stale persisted PID. Descendant/remote execution uncertainty must remain explicit in ProcessResult.
+- [x] **REFACTOR/verify:** Repeat focused/common checks and `go test -race ./internal/adapters/process`; no unconditional wall-clock sleeps in coordination tests.
+- [x] **Commit:** `feat: supervise bounded cancellable linux processes`.
 
 ### Task 7: Coordinate managed starts, resumes, and terminal evidence
 
@@ -208,11 +208,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** `application.NewCoordinator(store ports.SessionStore, providers map[string]ports.Provider, clock ports.Clock) *Coordinator`; `Start(ctx, req ports.StartRequest) error`, `Resume(ctx, sessionID string, oneShot bool) error`, `Cancel(ctx, sessionID string) error`. Provider map is constructor-injected, never global. Runtime evidence is reconciled once at settlement.
 
-- [ ] **RED:** `TestNoLaunchBeforeCommit`, `TestRepeatedQuotaBeforeRunning`, `TestMissingResumeIdentity`, `TestSoftDenialWins`, `TestContextChangeBlocksResume`. Assert matching explicit ID + reaped/settled quota produces waiting and retains incremented count; requested ID alone, wrong ID, live child, or external execution uncertainty produces attention/open uncertain attempt. Successful turn + permission blocker => attention, no success metric. Inject commit failure and assert zero starts.
-- [ ] **Observe RED:** `go test ./internal/application -run 'Test(NoLaunch|RepeatedQuota|MissingResume|SoftDenial|ContextChange)' -v`.
-- [ ] **GREEN:** Persist launch intent and capture identity, latch permission/parse blockers, gate capabilities/context immediately before spawn, settle attempts transactionally. On write failure cancel owned work. Start accepts prompt only in memory; resume never receives it. Observed mode always returns ErrUnsupported for takeover.
-- [ ] **REFACTOR/verify:** Repeat focused/common checks; add barrier-controlled cancel-vs-spawn test and verify a cancelled request cannot be relaunched.
-- [ ] **Commit:** `feat: coordinate evidence-gated managed recovery`.
+- [x] **RED:** `TestNoLaunchBeforeCommit`, `TestRepeatedQuotaBeforeRunning`, `TestMissingResumeIdentity`, `TestSoftDenialWins`, `TestContextChangeBlocksResume`. Assert matching explicit ID + reaped/settled quota produces waiting and retains incremented count; requested ID alone, wrong ID, live child, or external execution uncertainty produces attention/open uncertain attempt. Successful turn + permission blocker => attention, no success metric. Inject commit failure and assert zero starts.
+- [x] **Observe RED:** `go test ./internal/application -run 'Test(NoLaunch|RepeatedQuota|MissingResume|SoftDenial|ContextChange)' -v`.
+- [x] **GREEN:** Persist launch intent and capture identity, latch permission/parse blockers, gate capabilities/context immediately before spawn, settle attempts transactionally. On write failure cancel owned work. Start accepts prompt only in memory; resume never receives it. Observed mode always returns ErrUnsupported for takeover.
+- [x] **REFACTOR/verify:** Repeat focused/common checks; add barrier-controlled cancel-vs-spawn test and verify a cancelled request cannot be relaunched.
+- [x] **Commit:** `feat: coordinate evidence-gated managed recovery`.
 
 ### Task 8: Add scheduling, consent revocation, and lease renewal
 
@@ -222,11 +222,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** `application.NewScheduler(store ports.SessionStore, coordinator *Coordinator, clock ports.Clock, jitter ports.Jitter, limit int) *Scheduler`; `Run(ctx context.Context) error`. Store listing supplies due candidates; claims remain the sole authority.
 
-- [ ] **RED:** `TestSchedulerIndependentSessions`, `TestNoEarlyRetry`, `TestClockJump`, `TestLeaseFailureCancelsWithoutReplacement`, `TestConsentRevocation`. Assert max active=4, claim order by due time then creation/ID, no quota API polling, recheck within 30s, renewal at 10s against 30s lease; fifth budget blocks sixth attempt. Advance fake time, never sleep through cooldown.
-- [ ] **Observe RED:** `go test -race ./internal/application -run 'Test(Scheduler|NoEarly|ClockJump|LeaseFailure|ConsentRevocation)' -v`.
-- [ ] **GREEN:** Schedule only eligible managed sessions; limit workers, avoid zero-delay loops, cancel on failed renewal, recompute after wake. Unknown scope stays session-local; verified multi-window reset uses maximum applicable deadline. Quota-window evidence must be supplied by adapter, never guessed from provider name.
-- [ ] **REFACTOR/verify:** Repeat focused/common checks; verify waiting consent-off sessions expose blocker and do not spin.
-- [ ] **Commit:** `feat: schedule bounded independent recovery attempts`.
+- [x] **RED:** `TestSchedulerIndependentSessions`, `TestNoEarlyRetry`, `TestClockJump`, `TestLeaseFailureCancelsWithoutReplacement`, `TestConsentRevocation`. Assert max active=4, claim order by due time then creation/ID, no quota API polling, recheck within 30s, renewal at 10s against 30s lease; fifth budget blocks sixth attempt. Advance fake time, never sleep through cooldown.
+- [x] **Observe RED:** `go test -race ./internal/application -run 'Test(Scheduler|NoEarly|ClockJump|LeaseFailure|ConsentRevocation)' -v`.
+- [x] **GREEN:** Schedule only eligible managed sessions; limit workers, avoid zero-delay loops, cancel on failed renewal, recompute after wake. Unknown scope stays session-local; verified multi-window reset uses maximum applicable deadline. Quota-window evidence must be supplied by adapter, never guessed from provider name.
+- [x] **REFACTOR/verify:** Repeat focused/common checks; verify waiting consent-off sessions expose blocker and do not spin.
+- [x] **Commit:** `feat: schedule bounded independent recovery attempts`.
 
 ### Task 9: Test daemon ownership and real crash windows
 
@@ -236,11 +236,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** `persistence.AcquireLock(stateDir string) (io.Closer,error)`; `application.Recover(ctx context.Context, store ports.SessionStore, epoch string, now time.Time) error`. Crash helper exposes test-only synchronization pipes, not production IPC crash endpoints.
 
-- [ ] **RED:** `TestSecondDaemonCannotStart`, `TestCrashWindows`, `TestWaitingSurvivesRebootIdentity`: subprocess barriers at claim, launch intent, spawn, identity recorded, exit-before-commit; kill and reopen DB, assert uncertainty blocks every unfinished attempt while waiting due time survives. Lock descriptor must not leak to children.
-- [ ] **Observe RED:** `go test ./tests ./internal/adapters/persistence -run 'Test(SecondDaemon|CrashWindows|WaitingSurvives|Lock)' -v`.
-- [ ] **GREEN:** Hold advisory lock for full lifetime, reconcile before scheduling/readiness, model changed boot identity without relying on a physical reboot, and refuse stale-socket cleanup without ownership.
-- [ ] **REFACTOR/verify:** Repeat focused/common checks and `go test -race ./...`; report these as simulated reboot/process-crash tests, not real OS reboot certification.
-- [ ] **Commit:** `test: enforce daemon crash and ownership invariants`.
+- [x] **RED:** `TestSecondDaemonCannotStart`, `TestCrashWindows`, `TestWaitingSurvivesRebootIdentity`: subprocess barriers at claim, launch intent, spawn, identity recorded, exit-before-commit; kill and reopen DB, assert uncertainty blocks every unfinished attempt while waiting due time survives. Lock descriptor must not leak to children.
+- [x] **Observe RED:** `go test ./tests ./internal/adapters/persistence -run 'Test(SecondDaemon|CrashWindows|WaitingSurvives|Lock)' -v`.
+- [x] **GREEN:** Hold advisory lock for full lifetime, reconcile before scheduling/readiness, model changed boot identity without relying on a physical reboot, and refuse stale-socket cleanup without ownership.
+- [x] **REFACTOR/verify:** Repeat focused/common checks and `go test -race ./...`; report these as simulated reboot/process-crash tests, not real OS reboot certification.
+- [x] **Commit:** `test: enforce daemon crash and ownership invariants`.
 
 ### Task 10: Expose protected IPC and bounded output attachment
 
@@ -250,11 +250,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** `ipc.Listen(ctx context.Context, runtimeDir string, handler http.Handler) (net.Listener,error)`, `ipc.NewHandler(service *application.Coordinator, store ports.SessionStore) http.Handler`, `ipc.NewClient(socketPath string) *Client`; typed client Run/Inspect/List/Resume/Cancel/SetConsent/Health methods. `/v1/observations` is added in Task 14.
 
-- [ ] **RED:** `TestPeerUIDRejected`, `TestOversizeRequest`, `TestUnknownControlField`, `TestLostAckIdempotency`, `TestSlowSubscriberDoesNotBlock`. Assert mode 0600/parent0700, limit 64, body1MiB, timeout5s, no TCP, no `/tmp` fallback, same submission key => one process. Test unauthorized UID predicate plus actual peer credential extraction; do not claim a multi-user integration test without it.
-- [ ] **Observe RED:** `go test -race ./internal/adapters/ipc ./internal/application -run 'Test(Peer|OversizeRequest|UnknownControl|LostAck|SlowSubscriber)' -v`.
-- [ ] **GREEN:** Implement typed HTTP/JSON routes with strict controls; map conflicts to 409, validation to 400, unsupported to 422, overload to 503. Output ring limit 256 records/1MiB per session, attachment reports drops, cancellation is explicit, disconnect is not cancel. Return fixed sanitized errors.
-- [ ] **REFACTOR/verify:** Repeat focused/common checks; slow client and malformed request must not impede health or another session.
-- [ ] **Commit:** `feat: add private idempotent daemon ipc`.
+- [x] **RED:** `TestPeerUIDRejected`, `TestOversizeRequest`, `TestUnknownControlField`, `TestLostAckIdempotency`, `TestSlowSubscriberDoesNotBlock`. Assert mode 0600/parent0700, limit 64, body1MiB, timeout5s, no TCP, no `/tmp` fallback, same submission key => one process. Test unauthorized UID predicate plus actual peer credential extraction; do not claim a multi-user integration test without it.
+- [x] **Observe RED:** `go test -race ./internal/adapters/ipc ./internal/application -run 'Test(Peer|OversizeRequest|UnknownControl|LostAck|SlowSubscriber)' -v`.
+- [x] **GREEN:** Implement typed HTTP/JSON routes with strict controls; map conflicts to 409, validation to 400, unsupported to 422, overload to 503. Output ring limit 256 records/1MiB per session, attachment reports drops, cancellation is explicit, disconnect is not cancel. Return fixed sanitized errors.
+- [x] **REFACTOR/verify:** Repeat focused/common checks; slow client and malformed request must not impede health or another session.
+- [x] **Commit:** `feat: add private idempotent daemon ipc`.
 
 ### Task 11: Add configuration, CLI, and diagnostics
 
@@ -264,11 +264,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** `configuration.Load(path string) (Config,error)` using standard-library JSON; `run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int`; `infrastructure.Doctor(ctx context.Context, cfg Config) Report`. Config defaults and validation match spec, with absolute provider paths and safe settings references.
 
-- [ ] **RED:** `TestCLICompletionCopy` asserts exact turn-completion text and no objective-success claim; `TestDoctorNoModelCalls`, `TestContextDigestChange`, `TestCLIConsentDefaultOff`, `TestCLICtrlCCancels`, invalid duration/path/permission tests. Explicitly allow `--prompt -` to read caller stdin; supplied prompt argv exposure remains a user choice.
-- [ ] **Observe RED:** `go test ./cmd/quota-guardian ./internal/infrastructure/... -run 'Test(CLI|Doctor|Context|Config)' -v`.
-- [ ] **GREEN:** Wire run/session/status/doctor/daemon-run commands. Default stdout is human-readable, `--json` returns stable fields including turn outcome and capability evidence. Ctrl-C requests cancellation; transient disconnect never replays. Resolve XDG directories, reject unsafe paths/config fields, never load credentials. Doctor uses versions/help/connectivity checks only.
-- [ ] **REFACTOR/verify:** Repeat focused/common checks; `go build ./cmd/quota-guardian`; fake CLI end-to-end with private temporary config/state/runtime directories.
-- [ ] **Commit:** `feat: expose safe session controls and diagnostics`.
+- [x] **RED:** `TestCLICompletionCopy` asserts exact turn-completion text and no objective-success claim; `TestDoctorNoModelCalls`, `TestContextDigestChange`, `TestCLIConsentDefaultOff`, `TestCLICtrlCCancels`, invalid duration/path/permission tests. Explicitly allow `--prompt -` to read caller stdin; supplied prompt argv exposure remains a user choice.
+- [x] **Observe RED:** `go test ./cmd/quota-guardian ./internal/infrastructure/... -run 'Test(CLI|Doctor|Context|Config)' -v`.
+- [x] **GREEN:** Wire run/session/status/doctor/daemon-run commands. Default stdout is human-readable, `--json` returns stable fields including turn outcome and capability evidence. Ctrl-C requests cancellation; transient disconnect never replays. Resolve XDG directories, reject unsafe paths/config fields, never load credentials. Doctor uses versions/help/connectivity checks only.
+- [x] **REFACTOR/verify:** Repeat focused/common checks; `go build ./cmd/quota-guardian`; fake CLI end-to-end with private temporary config/state/runtime directories.
+- [x] **Commit:** `feat: expose safe session controls and diagnostics`.
 
 ### Task 12: Implement Antigravity adapter with stdin and denial handling
 
@@ -278,11 +278,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** `agy.New(runner ports.ProcessRunner, context domain.ExecutionContext, evidence ports.Capabilities) *Provider`; implement ports.Provider; `Parse(stdout, stderr []byte) ([]ports.Event,error)` is fixture helper only, production streaming parser shares the same decoder.
 
-- [ ] **RED:** `TestStreamInput` asserts JSON-encoded `{event:"user",message:{content:prompt}}` on stdin, no prompt in argv, no `-p`, both stream-json options, stdin close after one message. `TestSoftDenialExitZero` asserts denial+SUCCESS+exit0 => PermissionBlocked, not successful disposition. `TestResumeQuotaBeforeInit` tests missing identity => attention. Fuzz malformed/oversized records and literal newlines/quotes in prompts.
-- [ ] **Observe RED:** `go test ./internal/adapters/agy -run 'Test(StreamInput|SoftDenial|ResumeQuota|Classification|Capabilities)' -v`.
-- [ ] **GREEN:** Implement documented init/step/result events, verified provider-error parsing, separate stderr denial classification, explicit conversation ID resume construction. No guessed exact denial regex: until sanitized version-specific evidence is available, capability remains false. Distinguish synthetic quota fixtures from captured evidence in contracts.json; unknown formats fail closed. EOF/resume/settlement/policy contracts must be proven by Task 17 before autonomous enablement.
-- [ ] **REFACTOR/verify:** Repeat focused/common checks; fake executable tests cover all scenario names from Task 6; reject auth/network/tool-text 429 false positives.
-- [ ] **Commit:** `feat: add gated antigravity stream adapter`.
+- [x] **RED:** `TestStreamInput` asserts JSON-encoded `{event:"user",message:{content:prompt}}` on stdin, no prompt in argv, no `-p`, both stream-json options, stdin close after one message. `TestSoftDenialExitZero` asserts denial+SUCCESS+exit0 => PermissionBlocked, not successful disposition. `TestResumeQuotaBeforeInit` tests missing identity => attention. Fuzz malformed/oversized records and literal newlines/quotes in prompts.
+- [x] **Observe RED:** `go test ./internal/adapters/agy -run 'Test(StreamInput|SoftDenial|ResumeQuota|Classification|Capabilities)' -v`.
+- [x] **GREEN:** Implement documented init/step/result events, verified provider-error parsing, separate stderr denial classification, explicit conversation ID resume construction. No guessed exact denial regex: until sanitized version-specific evidence is available, capability remains false. Distinguish synthetic quota fixtures from captured evidence in contracts.json; unknown formats fail closed. EOF/resume/settlement/policy contracts must be proven by Task 17 before autonomous enablement.
+- [x] **REFACTOR/verify:** Repeat focused/common checks; fake executable tests cover all scenario names from Task 6; reject auth/network/tool-text 429 false positives.
+- [x] **Commit:** `feat: add gated antigravity stream adapter`.
 
 ### Task 13: Implement Codex adapter and capability evidence
 
@@ -292,11 +292,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** `codex.New(runner ports.ProcessRunner, context domain.ExecutionContext, evidence ports.Capabilities) *Provider`; implement ports.Provider and same fixture Parse signature as Task 12, scoped to its own package.
 
-- [ ] **RED:** `TestThreadIdentity`, `TestTurnCompletionNotObjective`, `TestResumeExplicitID`, `TestUnknownVersionFailsClosed`, `TestExternalExecutionUnsettled`. Assert JSONL thread.started ID persisted; turn.completed alone before settled exit cannot complete; mismatched ID blocks; no --last/ephemeral/bypass flags; no original prompt on resume (only the disclosed continuation message if the verified interface requires it); unsupported capability spawns nothing.
-- [ ] **Observe RED:** `go test ./internal/adapters/codex -run 'Test(Thread|Turn|Resume|UnknownVersion|External|Classification)' -v`.
-- [ ] **GREEN:** Implement versioned `exec --json` and explicit resume with verified stdin transport, structured turn/error events, source-aware classification; no private rollout DB or transcript scanning. A CLI exit does not establish that external daemon work settled; capability remains unavailable until verified.
-- [ ] **REFACTOR/verify:** Repeat focused/common checks; both provider packages plus `go test -race ./...` after root integration. Compatibility records keep simulation/runtime status separate.
-- [ ] **Commit:** `feat: add gated codex session adapter`.
+- [x] **RED:** `TestThreadIdentity`, `TestTurnCompletionNotObjective`, `TestResumeExplicitID`, `TestUnknownVersionFailsClosed`, `TestExternalExecutionUnsettled`. Assert JSONL thread.started ID persisted; turn.completed alone before settled exit cannot complete; mismatched ID blocks; no --last/ephemeral/bypass flags; no original prompt on resume (only the disclosed continuation message if the verified interface requires it); unsupported capability spawns nothing.
+- [x] **Observe RED:** `go test ./internal/adapters/codex -run 'Test(Thread|Turn|Resume|UnknownVersion|External|Classification)' -v`.
+- [x] **GREEN:** Implement versioned `exec --json` and explicit resume with verified stdin transport, structured turn/error events, source-aware classification; no private rollout DB or transcript scanning. A CLI exit does not establish that external daemon work settled; capability remains unavailable until verified.
+- [x] **REFACTOR/verify:** Repeat focused/common checks; both provider packages plus `go test -race ./...` after root integration. Compatibility records keep simulation/runtime status separate.
+- [x] **Commit:** `feat: add gated codex session adapter`.
 
 ### Task 14: Support native manual-session observation
 
@@ -306,11 +306,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** `(*Coordinator).Observe(ctx context.Context, event ports.Event) error`; `hooks.Handle(ctx context.Context, provider string, in io.Reader, out io.Writer, client ObservationClient) error`, where `ObservationClient.Observe(ctx,event) error` is the only transport permission exposed to hooks.
 
-- [ ] **RED:** `TestManualSessionDiscovered`, `TestObservationCannotTakeOver`, `TestStaleHookCannotReopen`, `TestObserverDaemonDown`, `TestObserverDeadline`, `TestObservationCannotGrantConsent`. Assert supported metadata creates observed mode, fixed neutral response, bounded1MiB/200ms, zero provider calls, no disk spool; transcript/prompt/tool payload ignored.
-- [ ] **Observe RED:** `go test ./internal/adapters/hooks ./internal/application -run 'Test(Manual|Observation|StaleHook|Observer)' -v`.
-- [ ] **GREEN:** Normalize only verified documented fields; provide native lifecycle observation independently of resume capability. Accept no control fields/permission decisions; add observation IPC route with commit-before-ack and idempotent events. Hook transport failures return provider-neutral success, not agent-context warnings.
-- [ ] **REFACTOR/verify:** Repeat focused/common checks, duplicate/out-of-order/unknown-provider fixtures; runtime observation remains separately labelled pending Task 17.
-- [ ] **Commit:** `feat: observe native sessions without assuming ownership`.
+- [x] **RED:** `TestManualSessionDiscovered`, `TestObservationCannotTakeOver`, `TestStaleHookCannotReopen`, `TestObserverDaemonDown`, `TestObserverDeadline`, `TestObservationCannotGrantConsent`. Assert supported metadata creates observed mode, fixed neutral response, bounded1MiB/200ms, zero provider calls, no disk spool; transcript/prompt/tool payload ignored.
+- [x] **Observe RED:** `go test ./internal/adapters/hooks ./internal/application -run 'Test(Manual|Observation|StaleHook|Observer)' -v`.
+- [x] **GREEN:** Normalize only verified documented fields; provide native lifecycle observation independently of resume capability. Accept no control fields/permission decisions; add observation IPC route with commit-before-ack and idempotent events. Hook transport failures return provider-neutral success, not agent-context warnings.
+- [x] **REFACTOR/verify:** Repeat focused/common checks, duplicate/out-of-order/unknown-provider fixtures; runtime observation remains separately labelled pending Task 17.
+- [x] **Commit:** `feat: observe native sessions without assuming ownership`.
 
 ### Task 15: Package official native plugins safely
 
@@ -320,11 +320,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** Plugin commands invoke the Task 14 observer only; no recovery worker or automatic consent. Official provider mechanisms own installation; no custom global configuration writer.
 
-- [ ] **RED:** `TestPluginContracts` validates event names, neutral response behavior, command quoting for install paths containing spaces, no bypass/control actions, bounded timeout. `TestPluginUninstallPreservesUnrelatedConfig` uses isolated fixture configurations and verifies unrelated entries byte-for-byte or semantically where the provider rewrites formatting.
-- [ ] **Observe RED:** `go test ./tests -run 'TestPlugin' -v`; expected missing packages/contracts.
-- [ ] **GREEN:** Fetch pinned/current official schemas, record provenance, produce minimal manifests using official plugin path variables. Document exact version-validated install/trust/uninstall commands; unvalidated installation instructions are marked provisional. Never install into the developer's real CLI configuration as a test.
-- [ ] **REFACTOR/verify:** Repeat focused/common checks; execute `agy plugin validate plugins/agy` if its read-only validator supports this path; record actual result. Codex package validation uses its documented mechanism, not an invented validate flag. Real install/uninstall is Task 17.
-- [ ] **Commit:** `feat: package native session observation plugins`.
+- [x] **RED:** `TestPluginContracts` validates event names, neutral response behavior, command quoting for install paths containing spaces, no bypass/control actions, bounded timeout. `TestPluginUninstallPreservesUnrelatedConfig` uses isolated fixture configurations and verifies unrelated entries byte-for-byte or semantically where the provider rewrites formatting.
+- [x] **Observe RED:** `go test ./tests -run 'TestPlugin' -v`; expected missing packages/contracts.
+- [x] **GREEN:** Fetch pinned/current official schemas, record provenance, produce minimal manifests using official plugin path variables. Document exact version-validated install/trust/uninstall commands; unvalidated installation instructions are marked provisional. Never install into the developer's real CLI configuration as a test.
+- [x] **REFACTOR/verify:** Repeat focused/common checks; execute `agy plugin validate plugins/agy` if its read-only validator supports this path; record actual result. Codex package validation uses its documented mechanism, not an invented validate flag. Real install/uninstall is Task 17.
+- [x] **Commit:** `feat: package native session observation plugins`.
 
 ### Task 16: Add telemetry and systemd lifecycle integration
 
@@ -334,11 +334,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** `observability.New(ctx context.Context, cfg Config) (ports.Telemetry, func(context.Context) error,error)`; `systemd.Render(executable string) ([]byte,error)`; `systemd.Install(ctx context.Context, unitDir, executable string) error`; `systemd.Control(ctx context.Context, action string) error` accepts start/stop/status only. Telemetry methods record bounded event enums, never raw maps.
 
-- [ ] **RED:** `TestMetricAttributesBounded`, `TestSecretsNeverLogged`, `TestExporterDisabled`, `TestSystemdUnit`, `TestReadinessAfterReconcile`, `TestShutdownBudget`, `TestInstallerPreservesExistingUnit`. Assert notify/watchdog/service defaults from spec, 10s child grace, total30s stop, 2s telemetry flush; do not emit watchdog health when storage/scheduler is stuck.
-- [ ] **Observe RED:** `go test ./internal/infrastructure/... -run 'Test(Metric|Secrets|Exporter|Systemd|Readiness|Shutdown|Installer)' -v`.
-- [ ] **GREEN:** Pin official OTel modules, inject instrumentation, no exporter by default; implement notify and watchdog, signal shutdown, explicit user-service installation/control/removal. Add CLI `daemon install|uninstall`; existing unowned unit causes conflict, no silent overwrite or lingering/root operation. Escape systemd executable path syntax rather than shell quoting. Cancellation affects owned work only.
-- [ ] **REFACTOR/verify:** Focused/common checks; `go test -tags=systemd ./tests -run TestSystemdLifecycle -v` only in a disposable user manager. Otherwise report skip and do not claim lifecycle runtime verification. `systemd-analyze --user verify` on a rendered test unit checks syntax where available.
-- [ ] **Commit:** `feat: instrument daemon and integrate user service lifecycle`.
+- [x] **RED:** `TestMetricAttributesBounded`, `TestSecretsNeverLogged`, `TestExporterDisabled`, `TestSystemdUnit`, `TestReadinessAfterReconcile`, `TestShutdownBudget`, `TestInstallerPreservesExistingUnit`. Assert notify/watchdog/service defaults from spec, 10s child grace, total30s stop, 2s telemetry flush; do not emit watchdog health when storage/scheduler is stuck.
+- [x] **Observe RED:** `go test ./internal/infrastructure/... -run 'Test(Metric|Secrets|Exporter|Systemd|Readiness|Shutdown|Installer)' -v`.
+- [x] **GREEN:** Pin official OTel modules, inject instrumentation, no exporter by default; implement notify and watchdog, signal shutdown, explicit user-service installation/control/removal. Add CLI `daemon install|uninstall`; existing unowned unit causes conflict, no silent overwrite or lingering/root operation. Escape systemd executable path syntax rather than shell quoting. Cancellation affects owned work only.
+- [x] **REFACTOR/verify:** Focused/common checks; `go test -tags=systemd ./tests -run TestSystemdLifecycle -v` only in a disposable user manager. Otherwise report skip and do not claim lifecycle runtime verification. `systemd-analyze --user verify` on a rendered test unit checks syntax where available. Lifecycle run skipped: no disposable user manager was available; runtime lifecycle remains unverified.
+- [x] **Commit:** `feat: instrument daemon and integrate user service lifecycle`.
 
 ### Task 17: Verify real-provider capabilities without fabricating support
 
@@ -348,11 +348,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** Real tests are build-tagged `provider_runtime`, require `QG_RUNTIME_AUTHORIZED=1`, and use isolated user-approved workspaces/configurations. Runtime capability registry accepts reviewed version-specific records, never enables features from synthetic tests or a user bypass toggle.
 
-- [ ] **RED:** `TestRuntimeGateDefaultsClosed` runs without external access and asserts no real command can invoke a model by default. Add explicit cases for stdin/EOF, same-ID resume, denied permission despite zero exit, observed manual lifecycle, install/remove preservation, and settlement evidence. Naturally occurring quota fixture provenance is separate from an intentionally induced limit.
-- [ ] **Observe RED:** `go test ./tests -run TestRuntimeGateDefaultsClosed -v` for the untagged gate harness in `tests/provider_runtime_gate_test.go`. External tests require authorization before execution; a skipped test is not GREEN capability evidence.
-- [ ] **GREEN:** Implement harness and provenance records. After explicit approval, run `QG_RUNTIME_AUTHORIZED=1 go test -tags=provider_runtime ./tests -run TestProviderRuntime -v`. Do not intentionally consume a usage quota to test exhaustion. Ask for an authorized naturally captured failure sample if needed, sanitize before storing. Enable each capability only after its own required evidence; observation may pass while autonomous recovery remains unavailable.
-- [ ] **REFACTOR/verify:** Ordinary tests/common checks pass even when no provider is installed. Record provider version, OS, date, checks run/skipped, fixture origin, and unresolved gates. Never report runtime coverage from fake binaries.
-- [ ] **Commit:** `test: separate provider runtime verification from simulation`.
+- [x] **RED:** `TestRuntimeGateDefaultsClosed` runs without external access and asserts no real command can invoke a model by default. Add explicit cases for stdin/EOF, same-ID resume, denied permission despite zero exit, observed manual lifecycle, install/remove preservation, and settlement evidence. Naturally occurring quota fixture provenance is separate from an intentionally induced limit.
+- [x] **Observe RED:** `go test ./tests -run TestRuntimeGateDefaultsClosed -v` for the untagged gate harness in `tests/provider_runtime_gate_test.go`. External tests require authorization before execution; a skipped test is not GREEN capability evidence.
+- [x] **GREEN:** Implement harness and provenance records. After explicit approval, run `QG_RUNTIME_AUTHORIZED=1 go test -tags=provider_runtime ./tests -run TestProviderRuntime -v`. Do not intentionally consume a usage quota to test exhaustion. Ask for an authorized naturally captured failure sample if needed, sanitize before storing. Enable each capability only after its own required evidence; observation may pass while autonomous recovery remains unavailable. The authorized live-provider run was skipped because no runtime authorization/workspace was provided; all runtime capabilities remain disabled.
+- [x] **REFACTOR/verify:** Ordinary tests/common checks pass even when no provider is installed. Record provider version, OS, date, checks run/skipped, fixture origin, and unresolved gates. Never report runtime coverage from fake binaries.
+- [x] **Commit:** `test: separate provider runtime verification from simulation`.
 
 ### Task 18: Document, review, and prepare release artifacts
 
