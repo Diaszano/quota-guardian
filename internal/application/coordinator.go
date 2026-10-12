@@ -15,13 +15,19 @@ import (
 
 const attemptLease = 30 * time.Second
 
+var (
+	errLeaseRenewal = errors.New("attempt lease renewal failed")
+	errUserCancel   = errors.New("session cancellation requested")
+)
+
 type Coordinator struct {
 	store      ports.SessionStore
 	providers  map[string]ports.Provider
 	clock      ports.Clock
+	jitter     ports.Jitter
 	ownerEpoch string
 	mu         sync.Mutex
-	active     map[string]context.CancelFunc
+	active     map[string]context.CancelCauseFunc
 }
 
 func NewCoordinator(store ports.SessionStore, providers map[string]ports.Provider, clock ports.Clock) *Coordinator {
@@ -29,7 +35,7 @@ func NewCoordinator(store ports.SessionStore, providers map[string]ports.Provide
 	if _, err := rand.Read(epoch[:]); err != nil {
 		copy(epoch[:], fmt.Sprintf("fallback-%d", time.Now().UnixNano()))
 	}
-	return &Coordinator{store: store, providers: providers, clock: clock, ownerEpoch: hex.EncodeToString(epoch[:]), active: make(map[string]context.CancelFunc)}
+	return &Coordinator{store: store, providers: providers, clock: clock, ownerEpoch: hex.EncodeToString(epoch[:]), active: make(map[string]context.CancelCauseFunc)}
 }
 
 func (c *Coordinator) Start(ctx context.Context, req ports.StartRequest) error {
@@ -61,26 +67,28 @@ func (c *Coordinator) Start(ctx context.Context, req ports.StartRequest) error {
 		}
 		return ports.ErrConflict
 	}
-	runCtx, cancel := context.WithCancel(ctx)
+	runCtx, cancel := context.WithCancelCause(ctx)
 	c.active[session.ID] = cancel
 	c.mu.Unlock()
 	defer c.finishRun(session.ID, cancel)
+	stopRenewal := c.renewLease(runCtx, cancel, attempt)
+	defer stopRenewal()
 
 	if err := c.store.MarkLaunching(runCtx, attempt); err != nil {
 		if runCtx.Err() != nil {
-			return c.finishCancelled(attempt)
+			return c.finishInterrupted(ctx, attempt, runCtx)
 		}
 		_ = c.store.MarkUncertain(context.WithoutCancel(ctx), attempt, domain.Evidence{ObservedAt: c.clock.Now()})
 		return err
 	}
 	if runCtx.Err() != nil {
-		return c.finishCancelled(attempt)
+		return c.finishInterrupted(ctx, attempt, runCtx)
 	}
 	req.Attempt, req.Context = attempt, session.Context
 	req.OnStart = func(identity domain.ProcessIdentity) error { return c.store.RecordIdentity(runCtx, attempt, identity) }
 	outcome, err := provider.Start(runCtx, req, nil)
 	if runCtx.Err() != nil {
-		return c.finishCancelled(attempt)
+		return c.finishInterrupted(ctx, attempt, runCtx)
 	}
 	if err != nil {
 		_ = c.store.MarkUncertain(context.WithoutCancel(ctx), attempt, domain.Evidence{ObservedAt: c.clock.Now()})
@@ -99,16 +107,24 @@ func (c *Coordinator) Resume(ctx context.Context, sessionID string, oneShot bool
 	provider, err := c.provider(session.Provider)
 	if err != nil {
 		c.mu.Unlock()
+		c.blockResume(ctx, session, err)
 		return err
 	}
 	caps := provider.Capabilities()
 	capsVerified := caps.CanResume && caps.SupportsDenial && caps.SupportsSettlement
 	if err := domain.CanResume(session, c.clock.Now(), capsVerified, oneShot); err != nil {
 		c.mu.Unlock()
+		c.blockResume(ctx, session, err)
 		return err
 	}
-	if !oneShot && (!caps.CanAutonomous || !session.Consent.BackgroundAllowed) {
+	if !oneShot && !caps.CanAutonomous {
 		c.mu.Unlock()
+		c.blockResume(ctx, session, domain.ErrCapabilitiesUnverified)
+		return domain.ErrCapabilitiesUnverified
+	}
+	if !oneShot && !session.Consent.BackgroundAllowed {
+		c.mu.Unlock()
+		c.blockResume(ctx, session, domain.ErrConsentRequired)
 		return domain.ErrConsentRequired
 	}
 	if session.ProviderSessionID == nil || *session.ProviderSessionID == "" {
@@ -127,20 +143,22 @@ func (c *Coordinator) Resume(ctx context.Context, sessionID string, oneShot bool
 		}
 		return ports.ErrConflict
 	}
-	runCtx, cancel := context.WithCancel(ctx)
+	runCtx, cancel := context.WithCancelCause(ctx)
 	c.active[session.ID] = cancel
 	c.mu.Unlock()
 	defer c.finishRun(session.ID, cancel)
+	stopRenewal := c.renewLease(runCtx, cancel, attempt)
+	defer stopRenewal()
 
 	if err := c.store.MarkLaunching(runCtx, attempt); err != nil {
 		if runCtx.Err() != nil {
-			return c.finishCancelled(attempt)
+			return c.finishInterrupted(ctx, attempt, runCtx)
 		}
 		_ = c.store.MarkUncertain(context.WithoutCancel(ctx), attempt, domain.Evidence{ObservedAt: c.clock.Now()})
 		return err
 	}
 	if runCtx.Err() != nil {
-		return c.finishCancelled(attempt)
+		return c.finishInterrupted(ctx, attempt, runCtx)
 	}
 	req := ports.ResumeRequest{
 		SessionID: session.ID, ProviderSessionID: *session.ProviderSessionID,
@@ -149,7 +167,7 @@ func (c *Coordinator) Resume(ctx context.Context, sessionID string, oneShot bool
 	}
 	outcome, err := provider.Resume(runCtx, req, nil)
 	if runCtx.Err() != nil {
-		return c.finishCancelled(attempt)
+		return c.finishInterrupted(ctx, attempt, runCtx)
 	}
 	if err != nil {
 		_ = c.store.MarkUncertain(context.WithoutCancel(ctx), attempt, domain.Evidence{ObservedAt: c.clock.Now()})
@@ -174,7 +192,7 @@ func (c *Coordinator) Cancel(ctx context.Context, sessionID string) error {
 		return err
 	}
 	if cancel := c.active[sessionID]; cancel != nil {
-		cancel()
+		cancel(errUserCancel)
 	}
 	return nil
 }
@@ -185,6 +203,29 @@ func (c *Coordinator) provider(name string) (ports.Provider, error) {
 		return nil, ports.ErrUnsupported
 	}
 	return provider, nil
+}
+
+func (c *Coordinator) blockResume(ctx context.Context, session domain.Session, reason error) {
+	code := ""
+	switch {
+	case errors.Is(reason, domain.ErrConsentRequired):
+		code = "recovery_consent_revoked"
+	case errors.Is(reason, domain.ErrContextMismatch):
+		code = "execution_context_changed"
+	case errors.Is(reason, domain.ErrCapabilitiesUnverified):
+		code = "provider_capability_unverified"
+	case errors.Is(reason, ports.ErrUnsupported):
+		code = "provider_unavailable"
+	default:
+		return
+	}
+	if session.State != domain.WaitingForReset && session.State != domain.ReadyToResume {
+		return
+	}
+	_, _ = c.store.Apply(context.WithoutCancel(ctx), domain.Transition{
+		ExpectedState: session.State, Destination: domain.NeedsAttention, Source: "coordinator",
+		Evidence: domain.Evidence{ExpectedSessionID: session.ID, Failure: domain.Failure{Category: domain.Unknown, Code: code}, ObservedAt: c.clock.Now()},
+	})
 }
 
 func (c *Coordinator) settle(ctx context.Context, session domain.Session, attempt domain.Attempt, state domain.State, outcome ports.Outcome) error {
@@ -208,7 +249,7 @@ func (c *Coordinator) settle(ctx context.Context, session domain.Session, attemp
 		if session.DeadlineAt != nil {
 			deadline = *session.DeadlineAt
 		}
-		decision := domain.NextRetry(c.clock.Now(), evidence.Failure, priorResumes, session.RetryPolicy, 0, deadline)
+		decision := domain.NextRetry(c.clock.Now(), evidence.Failure, priorResumes, session.RetryPolicy, c.jitterValue(), deadline)
 		if decision.Blocked {
 			disposition.State = domain.NeedsAttention
 			disposition.Blocker = decision.Reason
@@ -262,9 +303,59 @@ func (c *Coordinator) finishCancelled(attempt domain.Attempt) error {
 	})
 }
 
-func (c *Coordinator) finishRun(sessionID string, cancel context.CancelFunc) {
+func (c *Coordinator) finishInterrupted(ctx context.Context, attempt domain.Attempt, runCtx context.Context) error {
+	if errors.Is(context.Cause(runCtx), errLeaseRenewal) {
+		evidence := domain.Evidence{ObservedAt: c.clock.Now()}
+		_ = c.store.MarkUncertain(context.WithoutCancel(ctx), attempt, evidence)
+		return ports.ErrUncertain
+	}
+	return c.finishCancelled(attempt)
+}
+
+func (c *Coordinator) renewLease(ctx context.Context, cancel context.CancelCauseFunc, attempt domain.Attempt) context.CancelFunc {
+	renewCtx, stop := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			timer := c.clock.NewTimer(10 * time.Second)
+			select {
+			case <-renewCtx.Done():
+				timer.Stop()
+				return
+			case <-timer.C():
+				if err := c.store.Renew(renewCtx, attempt, c.clock.Now().Add(attemptLease)); err != nil && renewCtx.Err() == nil {
+					cancel(errors.Join(errLeaseRenewal, err))
+					return
+				}
+			}
+		}
+	}()
+	return func() {
+		stop()
+		<-done
+	}
+}
+
+func (c *Coordinator) jitterValue() float64 {
+	c.mu.Lock()
+	jitter := c.jitter
+	c.mu.Unlock()
+	if jitter == nil {
+		return 0
+	}
+	return jitter.Float64()
+}
+
+func (c *Coordinator) setJitter(jitter ports.Jitter) {
+	c.mu.Lock()
+	c.jitter = jitter
+	c.mu.Unlock()
+}
+
+func (c *Coordinator) finishRun(sessionID string, cancel context.CancelCauseFunc) {
 	c.mu.Lock()
 	delete(c.active, sessionID)
 	c.mu.Unlock()
-	cancel()
+	cancel(context.Canceled)
 }

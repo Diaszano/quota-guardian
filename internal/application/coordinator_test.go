@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -61,8 +62,14 @@ func (fixedClock) NewTimer(time.Duration) ports.Timer { return nil }
 type testProvider struct {
 	startOutcome  ports.Outcome
 	resumeOutcome ports.Outcome
+	resumeEntered chan struct{}
+	resumeRelease <-chan struct{}
+	resumeError   error
+	mu            sync.Mutex
 	startCalls    int
 	resumeCalls   int
+	activeResumes int
+	maxResumes    int
 }
 
 func (*testProvider) Name() string    { return "test" }
@@ -71,7 +78,9 @@ func (*testProvider) Capabilities() ports.Capabilities {
 	return ports.Capabilities{CanStart: true, CanResume: true, CanAutonomous: true, SupportsDenial: true, SupportsSettlement: true}
 }
 func (p *testProvider) Start(_ context.Context, req ports.StartRequest, _ func(ports.StreamRecord) error) (ports.Outcome, error) {
+	p.mu.Lock()
 	p.startCalls++
+	p.mu.Unlock()
 	if req.OnStart != nil {
 		if err := req.OnStart(domain.ProcessIdentity{PID: 42, BootID: "boot", StartTicks: 1}); err != nil {
 			return ports.Outcome{}, err
@@ -79,27 +88,75 @@ func (p *testProvider) Start(_ context.Context, req ports.StartRequest, _ func(p
 	}
 	return p.startOutcome, nil
 }
-func (p *testProvider) Resume(_ context.Context, req ports.ResumeRequest, _ func(ports.StreamRecord) error) (ports.Outcome, error) {
+func (p *testProvider) Resume(ctx context.Context, req ports.ResumeRequest, _ func(ports.StreamRecord) error) (ports.Outcome, error) {
+	p.mu.Lock()
 	p.resumeCalls++
+	p.activeResumes++
+	if p.activeResumes > p.maxResumes {
+		p.maxResumes = p.activeResumes
+	}
+	entered, release, configuredErr := p.resumeEntered, p.resumeRelease, p.resumeError
+	p.mu.Unlock()
+	defer func() {
+		p.mu.Lock()
+		p.activeResumes--
+		p.mu.Unlock()
+	}()
+	if entered != nil {
+		entered <- struct{}{}
+	}
 	if req.OnStart != nil {
 		if err := req.OnStart(domain.ProcessIdentity{PID: 43, BootID: "boot", StartTicks: 2}); err != nil {
 			return ports.Outcome{}, err
 		}
 	}
+	if release != nil {
+		select {
+		case <-ctx.Done():
+			return ports.Outcome{}, ctx.Err()
+		case <-release:
+		}
+	}
+	if configuredErr != nil {
+		return ports.Outcome{}, configuredErr
+	}
 	return p.resumeOutcome, nil
+}
+
+func (p *testProvider) counts() (starts, resumes, maxActive int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.startCalls, p.resumeCalls, p.maxResumes
 }
 
 type mutableClock struct{ now time.Time }
 
-func (c *mutableClock) Now() time.Time                   { return c.now }
-func (*mutableClock) NewTimer(time.Duration) ports.Timer { return nil }
+func (c *mutableClock) Now() time.Time                     { return c.now }
+func (*mutableClock) NewTimer(d time.Duration) ports.Timer { return wallTimer{Timer: time.NewTimer(d)} }
+
+type wallTimer struct{ *time.Timer }
+
+func (t wallTimer) C() <-chan time.Time { return t.Timer.C }
+
+type listSignalStore struct {
+	ports.SessionStore
+	listed chan struct{}
+}
+
+func (s listSignalStore) List(ctx context.Context, filter ports.SessionFilter) ([]domain.Session, error) {
+	select {
+	case s.listed <- struct{}{}:
+	default:
+	}
+	return s.SessionStore.List(ctx, filter)
+}
 
 func newTestSession(t *testing.T, store ports.SessionStore, now time.Time) domain.Session {
 	t.Helper()
 	ctx := domain.ExecutionContext{ExecutablePath: "/bin/agent", ProviderVersion: "1", Cwd: t.TempDir()}
 	ctx.Digest = domain.DigestContext(ctx)
 	session, err := store.Create(context.Background(), ports.NewSession{
-		Provider: "test", ContextID: "workspace", Mode: domain.ModeManaged, Context: ctx,
+		Provider: "test", ContextID: t.TempDir(), Mode: domain.ModeManaged, Context: ctx,
 		Consent: domain.Consent{Enabled: true, BackgroundAllowed: true, Revision: 1, ApprovedContextDigest: ctx.Digest, ApprovedAt: &now},
 	})
 	if err != nil {
@@ -162,8 +219,9 @@ func TestRepeatedQuotaBeforeRunning(t *testing.T) {
 	if got.State != domain.WaitingForReset || got.RetryCount != 1 {
 		t.Fatalf("after repeated quota: state=%s retry_count=%d", got.State, got.RetryCount)
 	}
-	if provider.resumeCalls != 1 {
-		t.Fatalf("resume calls = %d, want 1", provider.resumeCalls)
+	_, resumes, _ := provider.counts()
+	if resumes != 1 {
+		t.Fatalf("resume calls = %d, want 1", resumes)
 	}
 }
 
@@ -258,8 +316,9 @@ func TestContextChangeBlocksResume(t *testing.T) {
 	if err := coordinator.Resume(context.Background(), session.ID, false); err == nil {
 		t.Fatal("Resume() succeeded after the approved context changed")
 	}
-	if provider.resumeCalls != 0 {
-		t.Fatalf("provider resumed %d times with changed context", provider.resumeCalls)
+	_, resumes, _ := provider.counts()
+	if resumes != 0 {
+		t.Fatalf("provider resumed %d times with changed context", resumes)
 	}
 }
 
@@ -286,7 +345,8 @@ func TestCancelledRequestCannotLaunch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if provider.startCalls != 0 || got.State != domain.Cancelled {
-		t.Fatalf("start_calls=%d state=%s, want 0/CANCELLED", provider.startCalls, got.State)
+	starts, _, _ := provider.counts()
+	if starts != 0 || got.State != domain.Cancelled {
+		t.Fatalf("start_calls=%d state=%s, want 0/CANCELLED", starts, got.State)
 	}
 }
