@@ -42,6 +42,7 @@ type StartRequest struct {
 	Context   domain.ExecutionContext
 	Prompt    string // Ephemeral prompt passed into stdin / invocation
 	OnStart   func(domain.ProcessIdentity) error
+	OnClaim   func()
 }
 
 // ResumeRequest contains parameters to resume an existing managed turn.

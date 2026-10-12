@@ -21,13 +21,65 @@ var (
 )
 
 type Coordinator struct {
-	store      ports.SessionStore
-	providers  map[string]ports.Provider
-	clock      ports.Clock
-	jitter     ports.Jitter
-	ownerEpoch string
-	mu         sync.Mutex
-	active     map[string]context.CancelCauseFunc
+	store       ports.SessionStore
+	providers   map[string]ports.Provider
+	clock       ports.Clock
+	jitter      ports.Jitter
+	ownerEpoch  string
+	mu          sync.Mutex
+	submitMu    sync.Mutex
+	active      map[string]context.CancelCauseFunc
+	outputMu    sync.Mutex
+	outputs     map[string]*OutputBuffer
+	outputOrder []string
+}
+
+// Submit creates an idempotent managed session and starts only its first accepted submission.
+func (c *Coordinator) Submit(ctx context.Context, input ports.NewSession, prompt string) (domain.Session, error) {
+	c.submitMu.Lock()
+	defer c.submitMu.Unlock()
+	provider, err := c.provider(input.Provider)
+	if err != nil {
+		return domain.Session{}, err
+	}
+	contextProvider, ok := provider.(interface {
+		ExecutionContext() domain.ExecutionContext
+	})
+	if !ok {
+		return domain.Session{}, ports.ErrUnsupported
+	}
+	input.Context = contextProvider.ExecutionContext()
+	session, err := c.store.Create(ctx, input)
+	if err != nil {
+		return domain.Session{}, err
+	}
+	if session.State == domain.Discovered {
+		claimed := make(chan struct{}, 1)
+		finished := make(chan error, 1)
+		go func() {
+			finished <- c.Start(context.Background(), ports.StartRequest{SessionID: session.ID, Prompt: prompt, OnClaim: func() { claimed <- struct{}{} }})
+		}()
+		select {
+		case <-claimed:
+		case startErr := <-finished:
+			if startErr != nil && !errors.Is(startErr, ports.ErrConflict) {
+				return session, startErr
+			}
+		case <-ctx.Done():
+			latest, getErr := c.store.Get(context.Background(), session.ID)
+			if getErr != nil {
+				return session, getErr
+			}
+			if latest.State == domain.Discovered {
+				return latest, ctx.Err()
+			}
+			session = latest
+		}
+		if session.State == domain.Discovered {
+			session, err = c.store.Get(context.Background(), session.ID)
+		}
+	}
+	return session, err
 }
 
 func NewCoordinator(store ports.SessionStore, providers map[string]ports.Provider, clock ports.Clock) *Coordinator {
@@ -35,7 +87,28 @@ func NewCoordinator(store ports.SessionStore, providers map[string]ports.Provide
 	if _, err := rand.Read(epoch[:]); err != nil {
 		copy(epoch[:], fmt.Sprintf("fallback-%d", time.Now().UnixNano()))
 	}
-	return &Coordinator{store: store, providers: providers, clock: clock, ownerEpoch: hex.EncodeToString(epoch[:]), active: make(map[string]context.CancelCauseFunc)}
+	return &Coordinator{store: store, providers: providers, clock: clock, ownerEpoch: hex.EncodeToString(epoch[:]), active: make(map[string]context.CancelCauseFunc), outputs: make(map[string]*OutputBuffer)}
+}
+
+func (c *Coordinator) Output(sessionID string) *OutputBuffer {
+	c.outputMu.Lock()
+	defer c.outputMu.Unlock()
+	return c.outputs[sessionID]
+}
+
+func (c *Coordinator) output(sessionID string) *OutputBuffer {
+	c.outputMu.Lock()
+	defer c.outputMu.Unlock()
+	if c.outputs[sessionID] == nil {
+		c.outputs[sessionID] = NewOutputBuffer()
+		c.outputOrder = append(c.outputOrder, sessionID)
+		// shortcut: retain output for only the latest 64 sessions, increase when persistent output attachment is added.
+		if len(c.outputOrder) > 64 {
+			delete(c.outputs, c.outputOrder[0])
+			c.outputOrder = c.outputOrder[1:]
+		}
+	}
+	return c.outputs[sessionID]
 }
 
 func (c *Coordinator) Start(ctx context.Context, req ports.StartRequest) error {
@@ -67,6 +140,9 @@ func (c *Coordinator) Start(ctx context.Context, req ports.StartRequest) error {
 		}
 		return ports.ErrConflict
 	}
+	if req.OnClaim != nil {
+		req.OnClaim()
+	}
 	runCtx, cancel := context.WithCancelCause(ctx)
 	c.active[session.ID] = cancel
 	c.mu.Unlock()
@@ -86,7 +162,8 @@ func (c *Coordinator) Start(ctx context.Context, req ports.StartRequest) error {
 	}
 	req.Attempt, req.Context = attempt, session.Context
 	req.OnStart = func(identity domain.ProcessIdentity) error { return c.store.RecordIdentity(runCtx, attempt, identity) }
-	outcome, err := provider.Start(runCtx, req, nil)
+	output := c.output(session.ID)
+	outcome, err := provider.Start(runCtx, req, func(record ports.StreamRecord) error { output.Publish(record); return nil })
 	if runCtx.Err() != nil {
 		return c.finishInterrupted(ctx, attempt, runCtx)
 	}
@@ -165,7 +242,8 @@ func (c *Coordinator) Resume(ctx context.Context, sessionID string, oneShot bool
 		Attempt: attempt, Context: session.Context,
 		OnStart: func(identity domain.ProcessIdentity) error { return c.store.RecordIdentity(runCtx, attempt, identity) },
 	}
-	outcome, err := provider.Resume(runCtx, req, nil)
+	output := c.output(session.ID)
+	outcome, err := provider.Resume(runCtx, req, func(record ports.StreamRecord) error { output.Publish(record); return nil })
 	if runCtx.Err() != nil {
 		return c.finishInterrupted(ctx, attempt, runCtx)
 	}
