@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -180,5 +181,80 @@ func TestWatchdogRequiresFreshSchedulerAndStorageChecks(t *testing.T) {
 	}
 	if watchdogHealthy(time.Time{}, now, nil) {
 		t.Fatal("missing scheduler progress accepted")
+	}
+}
+
+func TestCLIHelpAndVersion(t *testing.T) {
+	var out, stderr bytes.Buffer
+	if code := run(context.Background(), []string{"--help"}, strings.NewReader(""), &out, &stderr); code != 0 || !strings.Contains(out.String(), "observe") || !strings.Contains(out.String(), "version") {
+		t.Fatalf("help exit=%d out=%q err=%q", code, out.String(), stderr.String())
+	}
+	old := version
+	version = "test-version"
+	defer func() { version = old }()
+	for _, arg := range []string{"version", "--version"} {
+		out.Reset()
+		if code := run(context.Background(), []string{arg}, strings.NewReader(""), &out, &stderr); code != 0 || strings.TrimSpace(out.String()) != "test-version" {
+			t.Fatalf("version exit=%d out=%q", code, out.String())
+		}
+	}
+}
+
+func TestUnsupportedPlatformRuntimeGate(t *testing.T) {
+	if got := runtimeCommandError("darwin", []string{"run"}); got != "runtime unsupported on darwin; provider supervision is supported on Linux only" {
+		t.Fatalf("unsupported runtime message=%q", got)
+	}
+	if got := runtimeCommandError("darwin", []string{"version"}); got != "" {
+		t.Fatalf("version unexpectedly blocked on unsupported runtime: %q", got)
+	}
+}
+
+func TestSystemdCLIInstallUninstallInIsolatedConfig(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("systemd user units are Linux-only")
+	}
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	configDir := filepath.Join(home, ".config", "quota-guardian")
+	if err := os.MkdirAll(configDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	config := []byte("{\"state_dir\":\"/tmp/qg-state\",\"runtime_dir\":\"/tmp/qg-runtime\"}\n")
+	configPath := filepath.Join(configDir, "config.json")
+	if err := os.WriteFile(configPath, config, 0600); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(root, "bin")
+	if err := os.Mkdir(bin, 0700); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(root, "systemctl.log")
+	tool := filepath.Join(bin, "systemctl")
+	if err := os.WriteFile(tool, []byte("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$QG_SYSTEMCTL_LOG\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(root, "state"))
+	t.Setenv("XDG_RUNTIME_DIR", filepath.Join(root, "runtime"))
+	t.Setenv("QG_SYSTEMCTL_LOG", logPath)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	var out, stderr bytes.Buffer
+	if code := run(context.Background(), []string{"daemon", "install"}, strings.NewReader(""), &out, &stderr); code != 0 {
+		t.Fatalf("install exit=%d: %s", code, stderr.String())
+	}
+	if code := run(context.Background(), []string{"daemon", "uninstall"}, strings.NewReader(""), &out, &stderr); code != 0 {
+		t.Fatalf("uninstall exit=%d: %s", code, stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "config", "systemd", "user", "quota-guardian.service")); !os.IsNotExist(err) {
+		t.Fatalf("unit remains: %v", err)
+	}
+	after, err := os.ReadFile(configPath)
+	if err != nil || !bytes.Equal(after, config) {
+		t.Fatalf("unrelated config changed: %v %q", err, after)
+	}
+	calls, err := os.ReadFile(logPath)
+	if err != nil || strings.Count(string(calls), "daemon-reload") != 2 {
+		t.Fatalf("systemctl calls=%q err=%v", calls, err)
 	}
 }

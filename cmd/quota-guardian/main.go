@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/Diaszano/quota-guardian/internal/adapters/agy"
@@ -31,6 +32,8 @@ import (
 )
 
 const completionCopy = "Turn completed; objective completion not assessed."
+
+var version = "dev"
 
 type runPayload struct {
 	Provider, Prompt string
@@ -72,11 +75,23 @@ func main() {
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: quota-guardian <run|sessions|status|doctor|daemon>")
+		printUsage(stderr)
 		return 2
+	}
+	if args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
+		printUsage(stdout)
+		return 0
+	}
+	if args[0] == "version" || args[0] == "--version" {
+		fmt.Fprintln(stdout, version)
+		return 0
 	}
 	if args[0] == "observe" {
 		return observeCommand(ctx, args[1:], stdin, stdout)
+	}
+	if message := runtimeCommandError(runtime.GOOS, args); message != "" {
+		fmt.Fprintln(stderr, message)
+		return 2
 	}
 	configPath := os.Getenv("QUOTA_GUARDIAN_CONFIG")
 	if configPath == "" {
@@ -202,6 +217,10 @@ func observeCommand(ctx context.Context, args []string, stdin io.Reader, stdout 
 	if fs.Parse(args) != nil || fs.NArg() != 0 || *provider == "" {
 		return 2
 	}
+	if !runtimeSupported(runtime.GOOS) {
+		_ = hooks.Handle(ctx, *provider, stdin, stdout, nil)
+		return 0
+	}
 	configPath := os.Getenv("QUOTA_GUARDIAN_CONFIG")
 	if configPath == "" {
 		home, _ := os.UserHomeDir()
@@ -219,6 +238,34 @@ func observeCommand(ctx context.Context, args []string, stdin io.Reader, stdout 
 	client := ipc.NewClient(filepath.Join(cfg.RuntimeDir, "quota-guardian", "control.sock"))
 	_ = hooks.Handle(ctx, *provider, stdin, stdout, client)
 	return 0
+}
+
+func printUsage(out io.Writer) {
+	fmt.Fprintln(out, "Quota Guardian supervises managed turns and observes native sessions.")
+	fmt.Fprintln(out, "usage: quota-guardian <run|sessions|status|doctor|daemon|observe|version>")
+	fmt.Fprintln(out, "  run --provider <agy|codex> --prompt <text> [--auto-resume] [--json]")
+	fmt.Fprintln(out, "  sessions <list|inspect|resume|cancel|auto-resume>")
+	fmt.Fprintln(out, "  daemon <run|install|uninstall|start|stop|status>")
+	fmt.Fprintln(out, "  observe --provider <agy/Stop|agy/PreInvocation|agy/PostInvocation|codex/SessionStart>")
+	fmt.Fprintln(out, "  version | --version | --help")
+}
+
+func runtimeSupported(goos string) bool { return goos == "linux" }
+func runtimeCommandError(goos string, args []string) string {
+	if runtimeSupported(goos) || !requiresRuntime(args) {
+		return ""
+	}
+	return fmt.Sprintf("runtime unsupported on %s; provider supervision is supported on Linux only", goos)
+}
+
+func requiresRuntime(args []string) bool {
+	switch args[0] {
+	case "run", "sessions", "status":
+		return true
+	case "daemon":
+		return len(args) > 1 && args[1] == "run"
+	}
+	return false
 }
 
 func loadConfig(path string) (configuration.Config, error) {

@@ -362,11 +362,11 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Interfaces:** `make test` => `go test ./...`; `make race` => `go test -race ./...`; `make vet` => `go vet ./...`; `make build` builds `./cmd/quota-guardian` into ignored `dist/`. Version supplied by linker variable in composition root; semantic version release record distinguishes experimental capability gates. No automatic public release during implementation.
 
-- [ ] **RED:** Add `tests/release_contract_test.go`: documented command help matches CLI, build version injected, unsupported platforms fail explicitly, fixtures never include credentials, architecture checks pass. Check generated artifact list/checksums using assertions, not a test that merely mirrors Makefile text.
-- [ ] **Observe RED:** `go test ./tests -run 'Test(Release|DocumentedCommands|Version)' -v`.
-- [ ] **GREEN:** Write complete English operation/security/uninstall guides, installation commands actually exercised, future public-API-only manual adoption path, turn-vs-objective distinction, simulated/runtime support matrix, and roadmap blockers. CI runs formatting/vet/unit/race with pinned actions and minimal permissions; releases build Linux artifacts/checksums and cross-build other targets labelled runtime-unsupported. No license choice is silently invented; ask maintainer to select/approve an open-source license before public release.
-- [ ] **REFACTOR/verify:** `go test ./...`, `go test -race ./...`, `go vet ./...`, `go build ./cmd/quota-guardian`, `test -z "$(gofmt -l cmd internal tests)"`, `git diff --check`; validate workflow syntax with available tooling. Execute documented local install/uninstall in a disposable directory. Report real integration/systemd skips prominently.
-- [ ] **Review/commit:** Request independent spec and security/code review; resolve findings using receiving-code-review and repeat affected tests. Commit `docs: prepare verified installation and release workflow`; use verification-before-completion and finishing-a-development-branch to present integration choices, without unapproved publication or destructive cleanup.
+- [x] **RED:** Added `tests/release_contract_test.go`: executable CLI help/version checks, explicit unsupported-platform behavior, credential-free fixtures, and artifact checksum assertions.
+- [x] **Observe RED:** `go test ./cmd/quota-guardian ./tests -run 'Test(Release|UnsupportedPlatform|SystemdCLI)' -v`.
+- [x] **GREEN:** Wrote English operation/security/uninstall guides, exercised install/uninstall in isolated temporary directories, documented the support matrix and roadmap blockers, and added pinned least-permission CI and artifact-only release workflows. No license was selected.
+- [x] **REFACTOR/verify:** Full unit/race/vet/architecture/format/diff checks passed; workflow YAML parsed; versioned build and Darwin cross-build passed. Live provider runtime tests and disposable systemd user-manager lifecycle test remain unrun and are called out in release docs.
+- [x] **Review/commit:** Independent review found a source-string-only contract test; replaced it with executable CLI checks and reran the full verification suite. Commit: `docs: prepare verified installation and release workflow`.
 
 ## Coverage and execution gates
 

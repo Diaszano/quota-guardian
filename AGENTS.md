@@ -26,3 +26,10 @@ This environment uses RTK (Token-Efficient Command Execution) to optimize output
   - Terminal states (`COMPLETED`, `FAILED`, `CANCELLED`) are strictly immutable.
   - No field may report "objective success". A completed turn means the supervised turn settled with provider-confirmed completion; objective completion is never assessed.
   - Discovered manual sessions cannot be taken over in the initial release.
+
+## Release and evidence claims
+
+- `make test`, `make race`, `make vet`, and `make architecture` are the standard checks; CI also checks formatting and architecture boundaries.
+- Synthetic fixtures, official documentation, and binary version checks do not count as live-provider runtime evidence.
+- Keep provider start, resume, denial classification, quota detection, and autonomous recovery disabled until separately reviewed version-specific evidence exists.
+- The release candidate is not a verified initial release while provider-runtime or disposable systemd lifecycle gates remain untested. No license is selected until the maintainer approves one.
