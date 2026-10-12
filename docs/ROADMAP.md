@@ -2,7 +2,7 @@
 
 ## Current candidate
 
-The tested local core, private IPC, simulated provider adapters, native metadata observers, bounded telemetry, and explicit Linux user-service packaging are available as an operational release candidate. Manual sessions remain observation-only. No public release is prepared because the repository has no maintainer-approved license and live-provider behavior remains unverified.
+The tested local core, private IPC, simulated provider adapters, native metadata observers, bounded telemetry, and explicit Linux user-service packaging are available as an operational release candidate. Manual sessions remain observation-only. The repository uses the maintainer-approved [MIT License](../LICENSE). This candidate has not been published, and live-provider behavior remains unverified.
 
 ## Required before an initial release
 
@@ -12,7 +12,6 @@ The tested local core, private IPC, simulated provider adapters, native metadata
 - Verify provider plugin installation and removal in disposable configurations; review hook trust behavior.
 - Run service readiness, watchdog, shutdown, and uninstall checks in a disposable systemd user manager.
 - Review version-specific evidence and enable each capability independently. Missing evidence keeps execution, denial classification, and autonomous recovery disabled.
-- Select and approve a software license before public publication.
 
 ## Deferred platform support
 

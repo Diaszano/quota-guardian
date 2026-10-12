@@ -304,8 +304,8 @@ func TestOversizeRecord(t *testing.T) {
 	if result.ExitCode != 0 {
 		t.Errorf("expected exit code 0, got %d", result.ExitCode)
 	}
-	if totalBytes < floodSize {
-		t.Errorf("expected at least %d bytes, got %d", floodSize, totalBytes)
+	if totalBytes != floodSize {
+		t.Errorf("expected exactly %d bytes, got %d", floodSize, totalBytes)
 	}
 	if maxChunkSize > 1024*1024 {
 		t.Errorf("max chunk size %d exceeded 1 MiB", maxChunkSize)

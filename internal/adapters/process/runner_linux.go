@@ -73,25 +73,32 @@ func (r *Runner) Run(
 		return ports.ProcessResult{}, fmt.Errorf("failed to open stdin pipe: %w", err)
 	}
 
-	stdoutPipe, err := cmd.StdoutPipe()
+	stdoutReader, stdoutWriter, err := os.Pipe()
 	if err != nil {
 		_ = stdinPipe.Close()
-		return ports.ProcessResult{}, fmt.Errorf("failed to open stdout pipe: %w", err)
+		return ports.ProcessResult{}, fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
 
-	stderrPipe, err := cmd.StderrPipe()
+	stderrReader, stderrWriter, err := os.Pipe()
 	if err != nil {
 		_ = stdinPipe.Close()
-		_ = stdoutPipe.Close()
-		return ports.ProcessResult{}, fmt.Errorf("failed to open stderr pipe: %w", err)
+		_ = stdoutReader.Close()
+		_ = stdoutWriter.Close()
+		return ports.ProcessResult{}, fmt.Errorf("failed to create stderr pipe: %w", err)
 	}
+	cmd.Stdout = stdoutWriter
+	cmd.Stderr = stderrWriter
 
 	if err := cmd.Start(); err != nil {
 		_ = stdinPipe.Close()
-		_ = stdoutPipe.Close()
-		_ = stderrPipe.Close()
+		_ = stdoutReader.Close()
+		_ = stdoutWriter.Close()
+		_ = stderrReader.Close()
+		_ = stderrWriter.Close()
 		return ports.ProcessResult{}, fmt.Errorf("failed to start process: %w", err)
 	}
+	_ = stdoutWriter.Close()
+	_ = stderrWriter.Close()
 
 	pid := cmd.Process.Pid
 	pgid := pid // Since Setpgid = true, child is group leader with pgid == pid
@@ -131,6 +138,8 @@ func (r *Runner) Run(
 			killProcessGroup(pgid, pidfd, syscall.SIGKILL)
 			_ = cmd.Wait()
 			reapDescendants(pgid)
+			_ = stdoutReader.Close()
+			_ = stderrReader.Close()
 			return ports.ProcessResult{
 				ExitCode:             -1,
 				Reaped:               true,
@@ -148,12 +157,12 @@ func (r *Runner) Run(
 
 	go func() {
 		defer streamWg.Done()
-		drainStream(ports.StreamStdout, stdoutPipe, onRecord, drainErrCh)
+		drainStream(ports.StreamStdout, stdoutReader, onRecord, drainErrCh)
 	}()
 
 	go func() {
 		defer streamWg.Done()
-		drainStream(ports.StreamStderr, stderrPipe, onRecord, drainErrCh)
+		drainStream(ports.StreamStderr, stderrReader, onRecord, drainErrCh)
 	}()
 
 	// Context cancellation supervisor
@@ -184,6 +193,8 @@ func (r *Runner) Run(
 
 	// Wait for streams to finish draining
 	streamWg.Wait()
+	_ = stdoutReader.Close()
+	_ = stderrReader.Close()
 	waitErr := <-waitErrCh
 
 	// Check if any stream draining returned an error

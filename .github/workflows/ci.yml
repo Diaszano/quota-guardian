@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
 
 permissions:
   contents: read
@@ -16,8 +18,8 @@ jobs:
         with:
           go-version: '1.26.x'
           cache: true
-      - run: test -z "$(gofmt -l cmd internal tests)"
-      - run: go vet ./...
-      - run: go test ./...
-      - run: go test -race ./...
-      - run: go test ./tests -run TestArchitecture
+      - run: 'python3 -m venv "$RUNNER_TEMP/pre-commit"'
+      - run: '"$RUNNER_TEMP/pre-commit/bin/python" -m pip install pre-commit==4.6.2'
+      - run: '"$RUNNER_TEMP/pre-commit/bin/python" -m pre_commit run --all-files'
+      - run: git diff --exit-code
+      - run: make check

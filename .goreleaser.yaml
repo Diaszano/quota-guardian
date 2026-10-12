@@ -1,0 +1,44 @@
+version: 2
+project_name: quota-guardian
+
+builds:
+  - main: ./cmd/quota-guardian
+    binary: quota-guardian
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{ .Tag }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: '{{ .ProjectName }}-{{ .Tag }}-{{ .Os }}-{{ .Arch }}{{ if eq .Os "darwin" }}-runtime-unsupported{{ end }}'
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+      - docs/INSTALLATION.md
+
+checksum:
+  name_template: SHA256SUMS
+
+changelog:
+  disable: true
+
+release:
+  use_existing_draft: true
+  draft: false
+  prerelease: true
+  make_latest: false
+  mode: prepend
+  header: |
+    This is an operational release candidate, not a verified initial release.
+    Linux amd64 and arm64 are the only supported runtime targets. Darwin archives
+    are compile-only and runtime-unsupported; macOS runtime support is unverified.
+
+    Provider start, resume, denial classification, quota detection, and autonomous
+    recovery remain disabled pending separately reviewed version-specific runtime
+    evidence. Manual sessions are observation-only. Live-provider runtime and
+    disposable systemd lifecycle gates remain untested. Artifacts are unsigned
+    and unnotarized; publishing them does not establish runtime verification.
