@@ -1,0 +1,13 @@
+{
+  "provider": "Codex CLI",
+  "provenance": "synthetic fixture derived from official non-interactive CLI documentation",
+  "runtime_verified": false,
+  "permission_evidence": "unavailable",
+  "quota_classification": "unavailable",
+  "autonomous_recovery": false,
+  "installed_version_checked": "0.162.1",
+  "version_checked_at": "2026-10-12",
+  "runtime_version_check": "passed",
+  "runtime_model_turn": "not run: no explicit runtime authorization",
+  "observation_runtime": "not run: plugin installation was not authorized"
+}

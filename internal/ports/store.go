@@ -17,13 +17,15 @@ var (
 )
 
 type NewSession struct {
-	SubmissionKey *string
-	Provider      string
-	ContextID     string
-	Mode          domain.SessionMode
-	Context       domain.ExecutionContext
-	RetryPolicy   domain.RetryPolicy
-	Consent       domain.Consent
+	SubmissionKey     *string
+	Provider          string
+	ProviderSessionID *string
+	ContextID         string
+	LastObservedAt    *time.Time
+	Mode              domain.SessionMode
+	Context           domain.ExecutionContext
+	RetryPolicy       domain.RetryPolicy
+	Consent           domain.Consent
 }
 
 type SessionFilter struct {
@@ -44,11 +46,13 @@ type ClaimRequest struct {
 }
 
 type AttemptResult struct {
-	AttemptID   string
-	Fence       int64
-	FinishedAt  time.Time
-	OutcomeCode string
-	Transition  domain.Transition
+	AttemptID         string
+	Fence             int64
+	FinishedAt        time.Time
+	OutcomeCode       string
+	ProviderSessionID string
+	NextRetryAt       *time.Time
+	Transition        domain.Transition
 }
 
 type UncertainResolution string
@@ -71,6 +75,7 @@ type ResolveUncertainRequest struct {
 
 type SessionStore interface {
 	Create(context.Context, NewSession) (domain.Session, error)
+	RecordObserved(context.Context, string, time.Time) error
 	Get(context.Context, string) (domain.Session, error)
 	List(context.Context, SessionFilter) ([]domain.Session, error)
 	Apply(context.Context, domain.Transition) (domain.Session, error)
@@ -80,6 +85,7 @@ type SessionStore interface {
 	RecordIdentity(context.Context, domain.Attempt, domain.ProcessIdentity) error
 	Renew(context.Context, domain.Attempt, time.Time) error
 	FinishAttempt(context.Context, AttemptResult) error
+	MarkUncertain(context.Context, domain.Attempt, domain.Evidence) error
 	Reconcile(context.Context, string, time.Time) error
 	ResolveUncertain(context.Context, ResolveUncertainRequest) error
 	Backup(context.Context, string) error

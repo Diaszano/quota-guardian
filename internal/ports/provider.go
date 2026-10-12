@@ -24,6 +24,8 @@ type Event struct {
 	Source            string
 	Provider          string
 	ProviderSessionID string
+	ContextID         string
+	Workspace         string
 	Evidence          domain.Evidence
 	ObservedAt        time.Time
 	DeliveryID        string
@@ -41,6 +43,8 @@ type StartRequest struct {
 	Attempt   domain.Attempt
 	Context   domain.ExecutionContext
 	Prompt    string // Ephemeral prompt passed into stdin / invocation
+	OnStart   func(domain.ProcessIdentity) error
+	OnClaim   func()
 }
 
 // ResumeRequest contains parameters to resume an existing managed turn.
@@ -49,6 +53,7 @@ type ResumeRequest struct {
 	ProviderSessionID string
 	Attempt           domain.Attempt
 	Context           domain.ExecutionContext
+	OnStart           func(domain.ProcessIdentity) error
 }
 
 // Provider defines the interface for interacting with underlying AI agent CLI tools.

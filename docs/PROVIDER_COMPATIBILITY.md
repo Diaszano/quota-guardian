@@ -45,4 +45,18 @@ Documentation is rolling rather than pinned to the installed releases. No live p
 
 Further read-only checks included `codex exec --help` and `codex plugin --help`. The official Codex hooks page documents SessionStart discovery, common session metadata, and asynchronous hooks, but warns that transcript format is unstable. Async completion does not initiate a new turn. These are documentation findings, not tested contracts for the installed binary.
 
-The [design specification](superpowers/specs/2026-10-11-quota-guardian-design.md) separates local-help verification, documented contracts, future simulation coverage, and future runtime verification. No simulated or live integration tests currently exist. Safe autonomous resume remains gated on policy preservation, identity, and settled invocation evidence. Normal-launch discovery does not authorize takeover of a manually running session.
+## Adapter implementation evidence (2026-10-12)
+
+The current official Antigravity headless guide documents newline-delimited `init`, `step_update`, and `result` events; `conversation_id`; `--input-format stream-json` paired with `--output-format stream-json`; and explicit `--conversation` selection. It says permission notices are written to stderr and that headless permission denials can soft-deny while exiting zero. It does not define a stable machine-readable denial code or a quota/reset schema. The simulated adapter therefore treats any stderr accompanying a nominal successful result as permission-blocked, which can conservatively classify ordinary diagnostics as attention. Quota classification and autonomous recovery remain disabled.
+
+The current official Codex non-interactive guide documents `codex exec --json` JSONL events, including `thread.started`, `turn.completed`, and `turn.failed`, a `-` prompt sentinel for stdin, and explicit `codex exec resume <SESSION_ID>`. The adapter uses these contracts in simulation, requires a settled/reaped process and matching `thread_id`, and never selects `--last`. Permission and quota classifiers remain disabled; no autonomous recovery capability is enabled. The docs and synthetic fixture do not establish runtime behavior or settlement of work external to the CLI process.
+
+Sources: [Antigravity headless mode](https://www.antigravity.google/docs/cli/headless/), [Codex non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode), [Codex command reference](https://learn.chatgpt.com/docs/developer-commands?surface=cli).
+
+The [design specification](superpowers/specs/2026-10-11-quota-guardian-design.md) separates local-help verification, documented contracts, simulation coverage, and runtime verification. The adapters now have synthetic fixtures and fake-runner tests; no live provider turn or quota exhaustion has been triggered. Safe autonomous resume remains gated on policy preservation, identity, and settled invocation evidence. Normal-launch discovery does not authorize takeover of a manually running session.
+
+## Runtime verification record (2026-10-12)
+
+This record is limited to local binary-version checks on Linux: Antigravity CLI `1.3.3` and Codex CLI `0.162.1`. `agy plugin validate plugins/agy` accepted the Antigravity package (`hooks: 1 processed`); no Codex marketplace validator was run. The untagged closed-gate test passed and the standard synthetic/fake-runner suites passed. No `provider_runtime` test was run because `QG_RUNTIME_AUTHORIZED=1` and an approved isolated workspace were not provided. No model turn, permission denial, quota exhaustion, plugin install/remove, or live session settlement was exercised.
+
+Therefore only documented hook-format observation is packaged, with its real delivery still unverified. Provider start/resume, denial classification, quota detection, autonomous recovery, and real settlement remain disabled. Do not describe these version checks or simulated fixtures as runtime capability evidence.

@@ -201,6 +201,15 @@ func (s *Store) Create(ctx context.Context, newSess ports.NewSession) (domain.Se
 			return domain.Session{}, err
 		}
 	}
+	if newSess.ProviderSessionID != nil && *newSess.ProviderSessionID != "" {
+		existing, err := s.getByProviderIdentity(ctx, newSess.Provider, newSess.ContextID, *newSess.ProviderSessionID)
+		if err == nil {
+			return existing, nil
+		}
+		if !errors.Is(err, ports.ErrNotFound) {
+			return domain.Session{}, err
+		}
+	}
 
 	// 2. Prepare digest and execution context
 	digest := newSess.Context.Digest
@@ -275,6 +284,11 @@ func (s *Store) Create(ctx context.Context, newSess ports.NewSession) (domain.Se
 		ms := newSess.Consent.RevokedAt.UnixMilli()
 		revokedAtMs = &ms
 	}
+	var lastObservedAtMs *int64
+	if newSess.LastObservedAt != nil {
+		ms := newSess.LastObservedAt.UTC().UnixMilli()
+		lastObservedAtMs = &ms
+	}
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO sessions (
@@ -287,28 +301,32 @@ func (s *Store) Create(ctx context.Context, newSess ports.NewSession) (domain.Se
 			turn_outcome, last_error_category, last_error_code, last_error_reset_at,
 			created_at, updated_at, last_observed_at
 		) VALUES (
-			?, ?, ?, NULL, ?, ?, 'DISCOVERED',
+			?, ?, ?, ?, ?, ?, 'DISCOVERED',
 			1, 0, ?, ?, ?,
 			?, ?, ?,
 			?, 0, ?, ?,
 			?, ?, ?,
 			?, NULL, ?, 0,
 			'unknown', NULL, NULL, NULL,
-			?, ?, NULL
+			?, ?, ?
 		)
 	`,
-		sessID, newSess.SubmissionKey, newSess.Provider, newSess.ContextID, mode,
+		sessID, newSess.SubmissionKey, newSess.Provider, newSess.ProviderSessionID, newSess.ContextID, mode,
 		digest, newSess.Consent.Revision, consentEnabled,
 		consentBg, newSess.Consent.ApprovedContextDigest, approvedAtMs,
 		revokedAtMs, rp.SafetyMargin.Milliseconds(), rp.BaseDelay.Milliseconds(),
 		rp.CapDelay.Milliseconds(), rp.JitterFraction, rp.MaxRetries,
 		rp.Deadline.Milliseconds(), deadlineAtMs,
-		nowMs, nowMs,
+		nowMs, nowMs, lastObservedAtMs,
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed: sessions.submission_key") && newSess.SubmissionKey != nil {
 			_ = tx.Rollback()
 			return s.getBySubmissionKey(ctx, *newSess.SubmissionKey)
+		}
+		if strings.Contains(err.Error(), "sessions.provider") && newSess.ProviderSessionID != nil {
+			_ = tx.Rollback()
+			return s.getByProviderIdentity(ctx, newSess.Provider, newSess.ContextID, *newSess.ProviderSessionID)
 		}
 		return domain.Session{}, fmt.Errorf("failed to insert session: %w", err)
 	}
@@ -328,6 +346,34 @@ func (s *Store) Create(ctx context.Context, newSess ports.NewSession) (domain.Se
 	}
 
 	return s.Get(ctx, sessID)
+}
+
+func (s *Store) getByProviderIdentity(ctx context.Context, provider, contextID, providerSessionID string) (domain.Session, error) {
+	row := s.db.QueryRowContext(ctx, sessionSelectQuery+" WHERE s.provider=? AND s.context_id=? AND s.provider_session_id=?", provider, contextID, providerSessionID)
+	session, err := scanSession(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Session{}, ports.ErrNotFound
+	}
+	if err != nil {
+		return domain.Session{}, err
+	}
+	return session, nil
+}
+
+func (s *Store) RecordObserved(ctx context.Context, sessionID string, observedAt time.Time) error {
+	ms := observedAt.UTC().UnixMilli()
+	result, err := s.db.ExecContext(ctx, `UPDATE sessions SET last_observed_at=CASE WHEN last_observed_at IS NULL OR last_observed_at<? THEN ? ELSE last_observed_at END WHERE id=? AND mode='observed'`, ms, ms, sessionID)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ports.ErrNotFound
+	}
+	return nil
 }
 
 // List returns sessions matching the filter criteria.

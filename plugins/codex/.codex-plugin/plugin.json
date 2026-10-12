@@ -1,0 +1,6 @@
+{
+  "name": "quota-guardian-observer",
+  "version": "0.1.0",
+  "description": "Observe native Codex sessions without controlling them.",
+  "hooks": "./hooks/hooks.json"
+}

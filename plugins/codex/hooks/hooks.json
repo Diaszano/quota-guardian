@@ -1,0 +1,7 @@
+{
+  "hooks": {
+    "SessionStart": [{
+      "hooks": [{"type": "command", "command": "quota-guardian observe --provider codex/SessionStart", "timeout": 1}]
+    }]
+  }
+}

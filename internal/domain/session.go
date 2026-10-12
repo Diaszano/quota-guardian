@@ -144,6 +144,7 @@ var allowedTransitions = map[State]map[State]bool{
 	Resuming: {
 		Running:        true,
 		QuotaExhausted: true,
+		Completed:      true,
 		NeedsAttention: true,
 		Failed:         true,
 		Cancelled:      true,

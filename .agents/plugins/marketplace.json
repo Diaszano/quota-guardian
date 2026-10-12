@@ -1,0 +1,7 @@
+{
+  "name": "quota-guardian",
+  "interface": {"displayName": "Quota Guardian"},
+  "plugins": [
+    {"name": "quota-guardian-observer", "source": {"source": "local", "path": "./plugins/codex"}}
+  ]
+}

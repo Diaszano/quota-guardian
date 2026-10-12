@@ -1,0 +1,13 @@
+{
+  "provider": "Antigravity CLI",
+  "provenance": "synthetic fixture derived from official headless stream-json documentation",
+  "runtime_verified": false,
+  "quota_classification": "unavailable",
+  "permission_policy": "any stderr alongside SUCCESS is conservatively blocked",
+  "installed_version_checked": "1.3.3",
+  "version_checked_at": "2026-10-12",
+  "runtime_version_check": "passed",
+  "runtime_model_turn": "not run: no explicit runtime authorization",
+  "observation_runtime": "not run: plugin installation was not authorized",
+  "autonomous_recovery": false
+}
