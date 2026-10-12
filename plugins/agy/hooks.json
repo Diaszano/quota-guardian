@@ -1,0 +1,13 @@
+{
+  "quota-guardian-observer": {
+    "Stop": [{
+      "hooks": [{"type": "command", "command": "quota-guardian observe --provider agy/Stop", "timeout": 1}]
+    }],
+    "PreInvocation": [{
+      "hooks": [{"type": "command", "command": "quota-guardian observe --provider agy/PreInvocation", "timeout": 1}]
+    }],
+    "PostInvocation": [{
+      "hooks": [{"type": "command", "command": "quota-guardian observe --provider agy/PostInvocation", "timeout": 1}]
+    }]
+  }
+}

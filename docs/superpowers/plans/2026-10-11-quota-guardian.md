@@ -316,7 +316,7 @@ Before each commit run `gofmt -w` on that task's Go files, `go vet ./...`, `go t
 
 **Dependencies:** 14. **Acceptance:** manifests match verified provider schemas and install/remove preserves unrelated settings in isolated tests.
 
-**Files:** Create `plugins/agy/plugin.json`, `plugins/agy/hooks.json`, `plugins/agy/README.md`, `plugins/codex/plugin.json`, `plugins/codex/hooks/hooks.json`, `plugins/codex/README.md`, `tests/plugin_contract_test.go`. If official pinned-version validation requires a different manifest location, revise these paths in the plan and compatibility record before creating the package, rather than inventing a schema.
+**Files:** Create `plugins/agy/plugin.json`, `plugins/agy/hooks.json`, `plugins/agy/README.md`, `plugins/codex/.codex-plugin/plugin.json`, `plugins/codex/hooks/hooks.json`, `plugins/codex/README.md`, `.agents/plugins/marketplace.json`, `tests/plugin_contract_test.go`. Official current formats require the Codex manifest under `.codex-plugin/` and a marketplace manifest for local installation; keep Antigravity's root `plugin.json` and `hooks.json` as documented.
 
 **Interfaces:** Plugin commands invoke the Task 14 observer only; no recovery worker or automatic consent. Official provider mechanisms own installation; no custom global configuration writer.
 
