@@ -32,4 +32,4 @@ OpenTelemetry metrics are no-op by default. Set `OTEL_METRICS_EXPORTER=otlp` to 
 
 `make test`, `make race`, `make vet`, and `make architecture` are the common checks. CI runs them on Linux. Cross-built macOS artifacts are marked runtime-unsupported; systemd service support is Linux-only. Real-provider and systemd user-manager tests require isolated, authorized environments and are not inferred from simulation.
 
-No software license has been selected. Maintainer approval is required before choosing a license or publishing a public release.
+Licensed under the [MIT License](LICENSE). See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution checks and the reviewable release flow.

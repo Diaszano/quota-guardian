@@ -8,4 +8,4 @@
 - Added opt-in bounded OpenTelemetry metrics and explicit Linux systemd user-service packaging.
 - Added CI checks and non-publishing cross-platform build artifacts.
 
-This candidate is not a verified initial release. Runtime gates, a systemd user-manager test, and license approval remain outstanding.
+This candidate is not a verified initial release. Runtime gates and a systemd user-manager test remain outstanding. The repository is licensed under the [MIT License](LICENSE).

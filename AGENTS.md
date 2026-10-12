@@ -32,4 +32,4 @@ This environment uses RTK (Token-Efficient Command Execution) to optimize output
 - `make test`, `make race`, `make vet`, and `make architecture` are the standard checks; CI also checks formatting and architecture boundaries.
 - Synthetic fixtures, official documentation, and binary version checks do not count as live-provider runtime evidence.
 - Keep provider start, resume, denial classification, quota detection, and autonomous recovery disabled until separately reviewed version-specific evidence exists.
-- The release candidate is not a verified initial release while provider-runtime or disposable systemd lifecycle gates remain untested. No license is selected until the maintainer approves one.
+- The release candidate is not a verified initial release while provider-runtime or disposable systemd lifecycle gates remain untested. The repository uses the maintainer-approved MIT License; see `LICENSE` and `CONTRIBUTING.md`.
