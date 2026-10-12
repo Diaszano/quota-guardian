@@ -43,7 +43,50 @@ Uninstall refuses to remove a unit without Quota Guardian's ownership marker. It
 
 ## Native observation plugins
 
-Install the provider CLI and Quota Guardian binary first. Follow the official CLI commands in [Antigravity plugin instructions](../plugins/agy/README.md) or [Codex plugin instructions](../plugins/codex/README.md). Review and trust hook definitions in the provider. Hooks require a running daemon and return neutral provider-specific output if it is unavailable. They only discover metadata; they do not take over existing work.
+Install the provider CLI and Quota Guardian binary first. Keep `quota-guardian` on `PATH`, then start the daemon with `quota-guardian daemon run` or the optional systemd user service. The hooks return neutral output when the daemon is unavailable and only discover metadata; they never take over existing work.
+
+### Codex
+
+The Codex package is a local marketplace plugin. From the repository root, register the checked-in marketplace:
+
+```sh
+codex plugin marketplace add "$PWD"
+codex plugin marketplace list
+```
+
+Restart the ChatGPT desktop app, open Codex's **Plugins Directory**, choose the `quota-guardian` marketplace, and install `quota-guardian-observer`. Review and trust its `SessionStart` hook when prompted. The marketplace command only registers the source; the plugin with lifecycle hooks must be installed from the desktop Plugins Directory. These hooks run in local Codex sessions, not cloud sessions.
+
+To remove it, uninstall `quota-guardian-observer` from the Plugins Directory. To stop tracking this local marketplace in the CLI, run:
+
+```sh
+codex plugin marketplace remove quota-guardian
+```
+
+See [Codex plugin instructions](../plugins/codex/README.md).
+
+### Antigravity (agy)
+
+From the repository root, install the local plugin directory and confirm it appears in the provider's plugin list:
+
+```sh
+agy plugin install "$PWD/plugins/agy"
+agy plugin list
+```
+
+Review `plugins/agy/plugin.json` and `plugins/agy/hooks.json`. Then enable the plugin and confirm it is listed:
+
+```sh
+agy plugin enable quota-guardian-observer
+agy plugin list
+```
+
+To remove it:
+
+```sh
+agy plugin uninstall quota-guardian-observer
+```
+
+See [Antigravity plugin instructions](../plugins/agy/README.md).
 
 ## Uninstall
 

@@ -1,14 +1,22 @@
 # Quota Guardian for Codex
 
-This plugin observes Codex `SessionStart` metadata through the supported command-hook format. It returns `{}` and does not add model context, grant consent, control a turn, or start/resume a provider. Quota Guardian must be installed and available on `PATH`.
+This plugin observes Codex `SessionStart` metadata through a local command hook. It returns `{}` and does not add model context, grant consent, control a turn, or start/resume a provider. Quota Guardian must be installed and available on `PATH`, and its daemon must be running for observations to be recorded.
 
-From the repository root, register its local marketplace and install the plugin using the official Codex CLI:
+### Install in Codex desktop
+
+From the repository root, register the checked-in local marketplace with the Codex CLI:
 
 ```sh
 codex plugin marketplace add "$PWD"
-codex plugin add quota-guardian-observer@quota-guardian
+codex plugin marketplace list
 ```
 
-Remove it with `codex plugin remove quota-guardian-observer@quota-guardian`; remove the marketplace separately with `codex plugin marketplace remove quota-guardian` if desired. Codex owns its plugin configuration and removal; Quota Guardian does not rewrite that configuration or unrelated entries. The paths shown above remain correctly quoted when the checkout path contains spaces.
+Restart the ChatGPT desktop app, open Codex's **Plugins Directory**, select the `quota-guardian` marketplace, and install `quota-guardian-observer`. Review and trust the hook definition when Codex prompts you. Lifecycle hooks are supported for manually installed Codex desktop plugins; they do not run in cloud-orchestrated sessions.
 
-Plugin hooks require local Codex execution and explicit hook trust. They are not deployed to cloud-orchestrated sessions. The manifest, marketplace, and hook paths follow the [Codex hook documentation](https://learn.chatgpt.com/docs/hooks) and [plugin documentation](https://learn.chatgpt.com/docs/plugins). Installed Codex CLI version 0.162.1 was checked; marketplace installation and live hook delivery were not run.
+To uninstall the plugin, remove it from Codex's Plugins Directory. To remove the registered marketplace source from the CLI afterward, run:
+
+```sh
+codex plugin marketplace remove quota-guardian
+```
+
+Codex owns its plugin configuration and removal; Quota Guardian does not rewrite that configuration or unrelated entries. The manifest, marketplace, and hook paths follow the [Codex plugin documentation](https://developers.openai.com/plugins/build/plugins). The CLI command registers the marketplace; plugin installation and live hook delivery have not been tested in this repository.
