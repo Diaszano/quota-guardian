@@ -18,4 +18,8 @@ jobs:
         with:
           go-version: '1.26.x'
           cache: true
+      - run: 'python3 -m venv "$RUNNER_TEMP/pre-commit"'
+      - run: '"$RUNNER_TEMP/pre-commit/bin/python" -m pip install pre-commit==4.6.2'
+      - run: '"$RUNNER_TEMP/pre-commit/bin/python" -m pre_commit run --all-files'
+      - run: git diff --exit-code
       - run: make check
