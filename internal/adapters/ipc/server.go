@@ -39,6 +39,8 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case r.URL.Path == "/v1/observations" && r.Method == http.MethodPost:
+		h.observe(w, r)
 	case r.URL.Path == "/v1/sessions" && r.Method == http.MethodPost:
 		h.run(w, r)
 	case r.URL.Path == "/v1/sessions" && r.Method == http.MethodGet:
@@ -124,6 +126,31 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	http.NotFound(w, r)
+}
+
+func (h *Handler) observe(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Provider          string    `json:"provider"`
+		Kind              string    `json:"kind"`
+		ProviderSessionID string    `json:"provider_session_id"`
+		ContextID         string    `json:"context_id"`
+		Workspace         string    `json:"workspace"`
+		ObservedAt        time.Time `json:"observed_at"`
+	}
+	if err := decode(w, r, &in); err != nil {
+		writeError(w, err)
+		return
+	}
+	if h.service == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{"unavailable"})
+		return
+	}
+	item, err := h.service.Observe(r.Context(), ports.Event{Source: "hook", Provider: in.Provider, Kind: in.Kind, ProviderSessionID: in.ProviderSessionID, ContextID: in.ContextID, Workspace: in.Workspace, ObservedAt: in.ObservedAt})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"id": item.ID})
 }
 
 func (h *Handler) run(w http.ResponseWriter, r *http.Request) {

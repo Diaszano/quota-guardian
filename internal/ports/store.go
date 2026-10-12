@@ -17,13 +17,15 @@ var (
 )
 
 type NewSession struct {
-	SubmissionKey *string
-	Provider      string
-	ContextID     string
-	Mode          domain.SessionMode
-	Context       domain.ExecutionContext
-	RetryPolicy   domain.RetryPolicy
-	Consent       domain.Consent
+	SubmissionKey     *string
+	Provider          string
+	ProviderSessionID *string
+	ContextID         string
+	LastObservedAt    *time.Time
+	Mode              domain.SessionMode
+	Context           domain.ExecutionContext
+	RetryPolicy       domain.RetryPolicy
+	Consent           domain.Consent
 }
 
 type SessionFilter struct {
@@ -73,6 +75,7 @@ type ResolveUncertainRequest struct {
 
 type SessionStore interface {
 	Create(context.Context, NewSession) (domain.Session, error)
+	RecordObserved(context.Context, string, time.Time) error
 	Get(context.Context, string) (domain.Session, error)
 	List(context.Context, SessionFilter) ([]domain.Session, error)
 	Apply(context.Context, domain.Transition) (domain.Session, error)

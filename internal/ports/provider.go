@@ -24,6 +24,8 @@ type Event struct {
 	Source            string
 	Provider          string
 	ProviderSessionID string
+	ContextID         string
+	Workspace         string
 	Evidence          domain.Evidence
 	ObservedAt        time.Time
 	DeliveryID        string

@@ -15,6 +15,7 @@ import (
 
 	"github.com/Diaszano/quota-guardian/internal/application"
 	"github.com/Diaszano/quota-guardian/internal/domain"
+	"github.com/Diaszano/quota-guardian/internal/ports"
 )
 
 type Client struct {
@@ -107,6 +108,19 @@ func (c *Client) SetConsent(ctx context.Context, id string, consent domain.Conse
 }
 func (c *Client) Health(ctx context.Context) error {
 	return c.call(ctx, http.MethodGet, "/v1/health", nil, nil)
+}
+
+type HookInput struct {
+	Provider          string    `json:"provider"`
+	Kind              string    `json:"kind"`
+	ProviderSessionID string    `json:"provider_session_id"`
+	ContextID         string    `json:"context_id"`
+	Workspace         string    `json:"workspace"`
+	ObservedAt        time.Time `json:"observed_at"`
+}
+
+func (c *Client) Observe(ctx context.Context, event ports.Event) error {
+	return c.call(ctx, http.MethodPost, "/v1/observations", HookInput{Provider: event.Provider, Kind: event.Kind, ProviderSessionID: event.ProviderSessionID, ContextID: event.ContextID, Workspace: event.Workspace, ObservedAt: event.ObservedAt}, nil)
 }
 
 func socketPath(runtimeDir string) string {

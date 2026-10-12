@@ -17,6 +17,7 @@ import (
 
 	"github.com/Diaszano/quota-guardian/internal/adapters/agy"
 	"github.com/Diaszano/quota-guardian/internal/adapters/codex"
+	"github.com/Diaszano/quota-guardian/internal/adapters/hooks"
 	"github.com/Diaszano/quota-guardian/internal/adapters/ipc"
 	"github.com/Diaszano/quota-guardian/internal/adapters/persistence"
 	"github.com/Diaszano/quota-guardian/internal/adapters/process"
@@ -71,6 +72,9 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, "usage: quota-guardian <run|sessions|status|doctor|daemon>")
 		return 2
+	}
+	if args[0] == "observe" {
+		return observeCommand(ctx, args[1:], stdin, stdout)
 	}
 	configPath := os.Getenv("QUOTA_GUARDIAN_CONFIG")
 	if configPath == "" {
@@ -151,6 +155,23 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		fmt.Fprintln(stderr, "unknown command:", args[0])
 		return 2
 	}
+}
+
+func observeCommand(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer) int {
+	fs := flag.NewFlagSet("observe", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	provider := fs.String("provider", "", "hook provider/event")
+	if fs.Parse(args) != nil || fs.NArg() != 0 || *provider == "" {
+		return 2
+	}
+	cfg, err := configuration.Defaults()
+	if err != nil {
+		_ = hooks.Handle(ctx, *provider, stdin, stdout, nil)
+		return 0
+	}
+	client := ipc.NewClient(filepath.Join(cfg.RuntimeDir, "quota-guardian", "control.sock"))
+	_ = hooks.Handle(ctx, *provider, stdin, stdout, client)
+	return 0
 }
 
 func loadConfig(path string) (configuration.Config, error) {
