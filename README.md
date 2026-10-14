@@ -1,26 +1,80 @@
 # Quota Guardian
 
-Quota Guardian supervises managed AI-agent turns and discovers manually launched native sessions. Its core is a durable local state machine with bounded execution evidence. It does not judge whether a task objective was achieved: a completed turn means the provider reported a settled completion.
+Quota Guardian is a local supervisor and session observer for AI coding agents. It keeps a durable record of managed turns, exposes local status and control commands, and can discover sessions started directly in Codex or Antigravity.
+
+The core is a durable local state machine with bounded execution evidence. It records whether a provider reported a turn as settled; it does not decide whether the user's task was successful. Native plugins only report session metadata to a running Quota Guardian daemon. They do not start or resume providers, take over manual sessions, grant consent, or add prompts to agent context.
+
+## Install and start automatically
+
+Quota Guardian currently supports runtime use on Linux. Building from source requires Go 1.26 or newer. These steps install the program, configure its daemon to start automatically with your user session, and then install the agent plugin.
+
+### 1. Build and install the binary
+
+From the repository root, build and install the executable:
+
+```sh
+make build VERSION=0.1.0-rc.1
+install -D -m 0755 dist/quota-guardian "$HOME/.local/bin/quota-guardian"
+```
+
+Make sure `$HOME/.local/bin` is on `PATH` in the environment used to launch your agent. If needed, add this directory to your shell startup file and restart the agent. The hook calls `quota-guardian` by name.
+
+### 2. Enable automatic daemon startup
+
+Install and enable the systemd user service:
+
+```sh
+quota-guardian daemon install
+systemctl --user enable --now quota-guardian.service
+quota-guardian status
+```
+
+`Daemon ready.` confirms that the daemon is running. The service starts with your user session. To have it start at boot and remain active even when you are logged out, enable systemd lingering for your account (this may require administrator permission and is optional):
+
+```sh
+sudo loginctl enable-linger "$USER"
+```
+
+Quota Guardian does not enable lingering or make system-wide changes on its own. For service removal and configuration details, see the [installation guide](docs/INSTALLATION.md).
+
+### 3. Install and enable the plugin
+
+Choose the plugin for your agent. Keep this repository at the same location after registering the local plugin source.
+
+#### Codex
+
+Register the repository as a local marketplace:
+
+```sh
+codex plugin marketplace add "$PWD"
+codex plugin marketplace list
+```
+
+Then restart the ChatGPT desktop app, open Codex's **Plugins Directory**, select the `quota-guardian` marketplace, and install `quota-guardian-observer`. Review and trust its `SessionStart` hook when prompted. Registering the marketplace alone does not install the plugin. The hook runs in local Codex sessions, not cloud sessions.
+
+#### Antigravity (agy)
+
+Install and enable the local plugin:
+
+```sh
+agy plugin install "$PWD/plugins/agy"
+agy plugin enable quota-guardian-observer
+agy plugin list
+```
+
+Review `plugins/agy/plugin.json` and `plugins/agy/hooks.json` before enabling it.
+
+Both plugins observe session metadata automatically when their provider lifecycle hooks run. They do not control or resume sessions. If the daemon is unavailable, hooks return neutral output and observations are not recorded. Check with `quota-guardian status` and `quota-guardian sessions list`. See the detailed [Codex](plugins/codex/README.md) and [Antigravity](plugins/agy/README.md) instructions for provider-specific details.
 
 ## Support status
 
-This repository is an **operational release candidate**, not a verified initial release. Linux is the supported runtime platform. Antigravity and Codex have simulated adapters and documented native observation hooks. Their installed versions and hook package formats were checked locally; no real model turn, permission denial, quota exhaustion, provider resume, or live plugin install was exercised. Start, resume, denial classification, quota detection, and autonomous recovery remain disabled until reviewed version-specific runtime evidence exists. See [provider compatibility](docs/PROVIDER_COMPATIBILITY.md) and the [roadmap](docs/ROADMAP.md).
+This repository is an **operational release candidate**, not a verified initial release. Linux is the supported runtime platform. No real model turn, permission denial, quota exhaustion, provider resume, or live plugin installation has been validated. Start, resume, denial classification, quota detection, and autonomous recovery remain disabled until reviewed version-specific runtime evidence exists. macOS archives are compile-only and marked runtime-unsupported. See [provider compatibility](docs/PROVIDER_COMPATIBILITY.md) and the [roadmap](docs/ROADMAP.md).
 
-Manual sessions are observed in `observed` mode only. The initial release does not take them over, resume them, or infer consent. Managed-session background recovery is a separate explicit consent and remains capability-gated.
+Manual sessions are observed in `observed` mode only. They are not taken over, resumed, or treated as consent. Managed-session background recovery requires separate explicit consent and remains capability-gated.
 
-## Build and use
+## Development
 
-Requires Go 1.26 or newer and Linux for supervised runtime use.
-
-```sh
-make test
-make race
-make vet
-make build VERSION=0.1.0-rc.1
-./dist/quota-guardian --help
-```
-
-See [installation](docs/INSTALLATION.md) for configuration and systemd setup. The CLI accepts `run`, `sessions`, `status`, `doctor`, `daemon`, `observe`, and `version`. Run `quota-guardian --help` for command syntax. `doctor` checks local configuration and provider executables but does not make model requests.
+Run `make check` for the development checks. The CLI includes `run`, `sessions`, `status`, `doctor`, `daemon`, `observe`, and `version`; `doctor` checks local configuration and provider executables but does not make model requests. See [configuration](docs/CONFIGURATION.md) for optional settings.
 
 ## Safety and privacy
 
@@ -28,8 +82,6 @@ State and runtime files are local and owner-only. Prompts are passed to a provid
 
 OpenTelemetry metrics are no-op by default. Set `OTEL_METRICS_EXPORTER=otlp` to opt in to OTLP/HTTP export; only bounded event and provider labels are emitted.
 
-## Development
-
-`make test`, `make race`, `make vet`, and `make architecture` are the common checks. CI runs them on Linux. Cross-built macOS artifacts are marked runtime-unsupported; systemd service support is Linux-only. Real-provider and systemd user-manager tests require isolated, authorized environments and are not inferred from simulation.
+CI runs tests, race checks, vet, and architecture checks on Linux. Cross-built macOS artifacts are marked runtime-unsupported. Real-provider and systemd user-manager tests require isolated, authorized environments and are not inferred from simulation.
 
 Licensed under the [MIT License](LICENSE). See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution checks and the reviewable release flow.
